@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>东莞首靠船识别助手 · 指挥台</title>
+<script src="auth-guard.js"></script>
+<script src="ship-data.js"></script>
+<script src="plan-store.js"></script>
+<script src="rule-engine.js"></script>
+<script src="data-sources.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+<script defer src="nanobot-chat.js?v=3"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-base:#f7f8fa; --bg-card:#ffffff; --bg-elevated:#fafbfc;
+    --border-hair:rgba(15,23,42,.06); --border-soft:rgba(15,23,42,.10);
+    --text-primary:#0b1220; --text-secondary:#475569; --text-tertiary:#94a3b8;
+    --brand-deep:#0a1f44; --brand-ink:#142c5c;
+    --accent:#00a896; --accent-soft:#e6f7f4;
+    --risk-low:#059669; --risk-mid:#d97706; --risk-high:#dc2626; --risk-veto:#7f1d1d;
+  }
+  html,body{background:var(--bg-base); color:var(--text-primary); font-family:"Geist","HarmonyOS Sans SC","PingFang SC",sans-serif; -webkit-font-smoothing:antialiased;}
+  .mono{font-family:"Geist Mono","JetBrains Mono",ui-monospace,monospace; font-feature-settings:"tnum";}
+  .card{background:var(--bg-card); border:1px solid var(--border-hair); border-radius:20px; box-shadow:0 1px 2px rgba(11,18,32,.04), 0 16px 32px -18px rgba(11,18,32,.08);}
+  .hairline{border-color:var(--border-hair);}
+  .btn-primary{background:var(--brand-deep); color:#fff;}
+  .btn-primary:hover{background:var(--brand-ink);}
+  .btn-primary:active{transform:translateY(1px);}
+  .btn-accent{background:var(--accent); color:#fff;}
+  .btn-ghost{border:1px solid rgba(10,31,68,.18); color:var(--brand-deep); background:transparent;}
+  .btn-ghost:hover{background:rgba(10,31,68,.04);}
+  .tag{border-radius:6px; padding:3px 9px; font-size:11px; letter-spacing:.04em; font-weight:500; text-transform:uppercase;}
+  .tag-low{background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;}
+  .tag-mid{background:#fffbeb;color:#b45309;border:1px solid #fcd34d;}
+  .tag-high{background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;}
+  .tag-veto{background:#450a0a;color:#fecaca;}
+  .tag-ghost{background:transparent; color:var(--text-secondary); border:1px solid var(--border-soft);}
+  /* breathing dot for live high-risk alert */
+  @keyframes breath { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(1.35);opacity:.55;} }
+  .breath::before{content:""; position:absolute; inset:-4px; border-radius:9999px; background:currentColor; animation:breath 2.4s ease-in-out infinite; opacity:.3;}
+  /* stagger entrance */
+  [data-stagger]{opacity:0; transform:translateY(8px); animation:riseIn .52s cubic-bezier(.16,1,.3,1) forwards;}
+  @keyframes riseIn{to{opacity:1; transform:translateY(0);}}
+  .focus-ring:focus{outline:none; box-shadow:0 0 0 3px rgba(0,168,150,.25);}
+  /* table */
+  .data-row:hover{background:#f8fafc;}
+  /* scrollbar */
+  ::-webkit-scrollbar{width:8px;height:8px;} ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px;}
+  /* alpine cloak */
+  [x-cloak]{display:none !important;}
+  /* kbd */
+  kbd{font-family:"Geist Mono",ui-monospace,monospace; font-size:10px; line-height:1;}
+  /* palette ease */
+  .palette-enter{transition:opacity .18s ease, transform .28s cubic-bezier(.16,1,.3,1);}
+  /* subtle top grain (fixed, pointer-events-none) */
+  .grain{position:fixed; inset:0; z-index:50; pointer-events:none; opacity:.025; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+</style>
+</head>
+<body x-data="harborApp()" x-init="init()" class="min-h-[100dvh]">
+<div class="grain" aria-hidden="true"></div>
+
+<!-- ===== TOP BAR ===== -->
+<header class="sticky top-0 z-40 border-b hairline" style="background:#0a1f44;">
+  <div class="max-w-[1440px] mx-auto h-16 px-6 md:px-10 flex items-center gap-6">
+    <!-- Logo -->
+    <div class="flex items-center gap-3 shrink-0">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+        <rect x="2" y="2" width="28" height="28" rx="6" stroke="#00A896" stroke-width="1.5"/>
+        <path d="M8 20 Q16 10 24 20" stroke="#00A896" stroke-width="1.5" fill="none"/>
+        <path d="M8 22 Q16 14 24 22" stroke="#fff" stroke-width="1.2" fill="none" opacity=".7"/>
+        <circle cx="16" cy="13" r="1.8" fill="#00A896"/>
+      </svg>
+      <div class="leading-tight">
+        <div class="text-[15px] font-semibold text-white tracking-tight">东莞首靠船识别助手</div>
+        <div class="text-[11px] text-white/55 tracking-wider mono">DG-MSA · v2.0.3</div>
+      </div>
+    </div>
+
+    <!-- Global Query -->
+    <div class="flex-1 max-w-2xl mx-auto w-full">
+      <div class="flex items-center bg-white/[.06] rounded-[10px] border border-white/10 backdrop-blur-sm">
+        <!-- field tabs -->
+        <div class="flex items-center pl-3 gap-1 text-[11px] mono">
+          <template x-for="(f,i) in fields" :key="f.key">
+            <button @click="activeField=f.key" :class="activeField===f.key ? 'bg-[#00A896] text-white' : 'text-white/60 hover:text-white'" class="px-2.5 py-1 rounded-md tracking-wide uppercase transition">
+              <span x-text="f.label"></span>
+            </button>
+          </template>
+        </div>
+        <input
+          x-model="searchQuery"
+          @keydown.enter="doSearch()"
+          type="text"
+          :placeholder="`查询 ${fields.find(f=>f.key===activeField).label}  ·  例：${fields.find(f=>f.key===activeField).eg}`"
+          class="flex-1 bg-transparent text-white placeholder-white/35 px-4 py-2.5 text-[13px] focus:outline-none mono">
+        <button @click="cmdkOpen=true" type="button"
+                class="hidden md:flex items-center gap-1.5 mr-2 px-2.5 py-1 rounded-md bg-white/[.06] hover:bg-white/[.12] border border-white/10 transition text-[10.5px] text-white/70 hover:text-white"
+                title="唤起 Nanobot · Cmd/Ctrl+K">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.5 10a2.5 2.5 0 1 1 3.8 2.1c-.8.5-1.3 1-1.3 1.9"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
+          <span class="mono tracking-wider">Ask Nanobot</span>
+          <span class="inline-flex items-center gap-0.5 ml-1 pl-1.5 border-l border-white/15">
+            <kbd class="text-white/60">⌘</kbd><kbd class="text-white/60">K</kbd>
+          </span>
+        </button>
+        <button @click="doSearch()" class="btn-accent text-[12px] font-medium px-4 py-2 rounded-[8px] mr-1 tracking-wide transition-all" style="transition:all .2s cubic-bezier(.16,1,.3,1);">
+          查询
+        </button>
+      </div>
+    </div>
+
+    <!-- Right Cluster -->
+    <div class="flex items-center gap-4 shrink-0">
+      <button class="relative text-white/70 hover:text-white transition">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <!-- breathing dot for unread high-risk alert -->
+        <span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full" style="background:#DC2626; position:absolute;">
+          <span class="absolute inset-0 rounded-full animate-ping" style="background:#DC2626;opacity:.55;"></span>
+        </span>
+      </button>
+      <div class="h-6 w-px bg-white/15"></div>
+      <div class="relative" @keydown.escape.window="userMenuOpen=false" @click.outside="userMenuOpen=false">
+        <button @click="userMenuOpen=!userMenuOpen" class="flex items-center gap-2.5 hover:bg-white/[.06] rounded-lg pl-1 pr-2 py-1 transition" :class="userMenuOpen && 'bg-white/[.08]'">
+          <div class="w-8 h-8 rounded-full flex items-center justify-center font-medium text-[12px] mono" style="background:#00A896;color:#0a1f44;" x-text="currentUserInitial">W</div>
+          <div class="leading-tight hidden md:block text-left">
+            <div class="text-[13px] text-white" x-text="currentUser">桂凯</div>
+            <div class="text-[10px] text-white/50 tracking-wider" x-text="currentUserDept">船舶交通管理中心</div>
+          </div>
+          <svg class="hidden md:block text-white/50 transition-transform" :class="userMenuOpen && 'rotate-180'" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+
+        <!-- Dropdown -->
+        <div x-show="userMenuOpen" x-cloak x-transition.opacity.duration.150ms
+             class="absolute right-0 top-[calc(100%+8px)] w-64 card overflow-hidden z-50" style="background:#fff;">
+          <!-- Header -->
+          <div class="px-4 py-3 border-b hairline" style="background:#fafbfc;">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full flex items-center justify-center font-medium text-[13px] mono" style="background:#0a1f44;color:#00A896;" x-text="currentUserInitial">W</div>
+              <div class="leading-tight min-w-0">
+                <div class="text-[13.5px] font-medium" style="color:var(--text-primary);" x-text="currentUser">桂凯</div>
+                <div class="text-[11px] mono tracking-wider" style="color:var(--text-tertiary);" x-text="'DG-MSA · '+currentUserRole">DG-MSA · 执法员</div>
+              </div>
+            </div>
+          </div>
+          <!-- Meta -->
+          <div class="px-4 py-2.5 border-b hairline text-[12px] space-y-1.5" style="color:var(--text-secondary);">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] uppercase tracking-wider mono" style="color:var(--text-tertiary);">所属</span>
+              <span x-text="currentUserDept">船舶交通管理中心</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] uppercase tracking-wider mono" style="color:var(--text-tertiary);">登录时间</span>
+              <span class="mono" x-text="loginTime"></span>
+            </div>
+          </div>
+          <!-- Actions -->
+          <div class="py-1.5">
+            <button @click="userMenuOpen=false; openProfileEdit()" class="w-full flex items-center gap-2.5 px-4 py-2 text-[13px] hover:bg-slate-50 transition" style="color:var(--text-primary);">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <span>账号设置</span>
+            </button>
+            <button @click="logout()" class="w-full flex items-center gap-2.5 px-4 py-2 text-[13px] transition hover:bg-red-50 text-red-600">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+              <span>退出登录</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===== RAIL NAV + MAIN ===== -->
+<div class="flex">
+  <!-- Rail Nav -->
+  <aside class="shrink-0 w-[72px] border-r hairline bg-white min-h-[calc(100dvh-64px)] sticky top-16">
+    <nav class="flex flex-col items-center py-5 gap-1">
+      <template x-for="item in nav" :key="item.id">
+        <button @click="navigate(item)"
+                :class="item.active ? 'text-[#0a1f44] bg-[#E6F7F4]' : 'text-slate-500 hover:text-[#0a1f44] hover:bg-slate-50'"
+                class="w-12 h-12 rounded-[10px] flex items-center justify-center relative transition-all group">
+          <template x-if="item.active"><span class="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-[#00A896]"></span></template>
+          <span x-html="item.icon"></span>
+          <span class="absolute left-full ml-2 px-2.5 py-1 rounded bg-[#0b1220] text-white text-[11px] whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition z-50" x-text="item.label"></span>
+        </button>
+      </template>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 min-w-0">
+    <div class="max-w-[1440px] mx-auto px-6 md:px-10 py-8">
+
+      <!-- Breadcrumb + Page Title -->
+      <div data-stagger style="animation-delay:0ms" class="mb-7">
+        <div class="flex items-center gap-2 text-[11px] mono tracking-wider text-slate-400 uppercase mb-2">
+          <span>Dashboard</span><span>/</span><span class="text-slate-600">今日指挥台</span>
+        </div>
+        <div class="flex items-end justify-between gap-4 flex-wrap">
+          <div>
+            <h1 class="text-[32px] font-semibold tracking-tight leading-none text-[#0b1220]">指挥台 · <span class="text-slate-400 font-normal">2026.05.12 · 周二</span></h1>
+            <p class="mt-2 text-[13px] text-slate-500">近24小时内，辖区识别到 <span class="mono font-medium text-[#0b1220]" x-text="countAll"></span> 艘首靠船，其中 <span class="text-[#DC2626] font-medium" x-text="countVeto"></span> 艘触发一票否决提醒。</p>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <button class="btn-ghost px-3.5 py-2 rounded-[10px] text-[12px] flex items-center gap-1.5 transition" style="transition:all .2s cubic-bezier(.16,1,.3,1);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              导出日报
+            </button>
+            <button class="btn-primary px-4 py-2 rounded-[10px] text-[12px] font-medium flex items-center gap-1.5 transition" style="transition:all .2s cubic-bezier(.16,1,.3,1);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+              新建查询
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== ROW 1 · KPI STRIP (no inner cards, divide-x) ===== -->
+      <section data-stagger style="animation-delay:60ms" class="card mb-6 overflow-hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 hairline">
+          <!-- KPI 1 -->
+          <div class="p-7">
+            <div class="text-[11px] mono uppercase tracking-widest text-slate-400 mb-3">今日首靠船</div>
+            <div class="flex items-baseline gap-3">
+              <span class="mono text-[36px] font-semibold leading-none text-[#0b1220]" x-text="countAll"></span>
+              <span class="text-[12px] mono flex items-center gap-1" style="color:#059669;">
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M6 2l4 4H2l4-4z" fill="currentColor"/></svg>
+                今日
+              </span>
+            </div>
+            <div class="mt-3 flex items-center gap-1.5">
+              <span class="inline-block w-1.5 h-1.5 rounded-full" style="background:#00A896;"></span>
+              <span class="text-[11px] text-slate-500">近6月滚动库自动识别</span>
+            </div>
+          </div>
+          <!-- KPI 2 -->
+          <div class="p-7">
+            <div class="text-[11px] mono uppercase tracking-widest text-slate-400 mb-3">高风险 · 待处置</div>
+            <div class="flex items-baseline gap-3">
+              <span class="mono text-[36px] font-semibold leading-none" style="color:#DC2626;" x-text="countHigh"></span>
+              <span class="text-[12px] text-slate-400 mono">/ <span x-text="countAll"></span></span>
+            </div>
+            <div class="mt-3 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <div class="h-full rounded-full" :style="`width:${countAll>0?Math.round(countHigh/countAll*100):0}%; background:linear-gradient(90deg,#DC2626 0%,#F87171 100%);`"></div>
+            </div>
+          </div>
+          <!-- KPI 3 -->
+          <div class="p-7">
+            <div class="text-[11px] mono uppercase tracking-widest text-slate-400 mb-3">一票否决提醒</div>
+            <div class="flex items-baseline gap-3">
+              <span class="mono text-[36px] font-semibold leading-none" style="color:#7F1D1D;" x-text="countVeto"></span>
+              <span class="tag tag-veto">VETO</span>
+            </div>
+            <div class="mt-3 text-[11px] text-slate-500">触发一票否决的船舶数量</div>
+          </div>
+          <!-- KPI 4 -->
+          <div class="p-7">
+            <div class="text-[11px] mono uppercase tracking-widest text-slate-400 mb-3">滚动库总量</div>
+            <div class="flex items-baseline gap-3">
+              <span class="mono text-[36px] font-semibold leading-none text-[#0b1220]" x-text="planStoreTotal"></span>
+              <span class="text-[12px] text-slate-400 mono">行</span>
+            </div>
+            <div class="mt-3 flex items-center gap-3 text-[11px] text-slate-500">
+              <span class="flex items-center gap-1"><i class="w-1.5 h-1.5 rounded-full" style="background:#059669"></i>近6月</span>
+              <span class="flex items-center gap-1"><i class="w-1.5 h-1.5 rounded-full" style="background:#D97706"></i>上传同步</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== ROW 2 · 8/4 split · 首靠船实时清单 + 风险等级环 ===== -->
+      <section class="grid grid-cols-12 gap-6 mb-6">
+        <!-- Ship List -->
+        <div data-stagger style="animation-delay:140ms" class="card col-span-12 lg:col-span-8 overflow-hidden">
+          <div class="flex items-center justify-between px-7 pt-6 pb-4">
+            <div>
+              <div class="text-[18px] font-semibold tracking-tight">今日首靠船清单</div>
+              <div class="text-[12px] text-slate-500 mt-0.5">近6个月进出港计划中无记录的船舶，自动识别并规则库匹配</div>
+            </div>
+            <div class="flex items-center gap-1.5 text-[11px] mono">
+              <button @click="statusFilter='all'; currentPage=1; pagerExpanded=false" class="px-2.5 py-1 rounded-md transition" :class="statusFilter==='all'?'text-[#0a1f44] bg-[#E6F7F4]':'text-slate-500 hover:bg-slate-50'">全部 <span x-text="countAll"></span></button>
+              <button @click="statusFilter='high'; currentPage=1; pagerExpanded=false" class="px-2.5 py-1 rounded-md transition" :class="statusFilter==='high'?'text-[#7f1d1d] bg-[#FEE2E2]':'text-slate-500 hover:bg-slate-50'">高风险 <span x-text="countHigh"></span></button>
+              <button @click="statusFilter='mid'; currentPage=1; pagerExpanded=false" class="px-2.5 py-1 rounded-md transition" :class="statusFilter==='mid'?'text-[#92400E] bg-[#FEF3C7]':'text-slate-500 hover:bg-slate-50'">中风险 <span x-text="countMid"></span></button>
+              <button @click="statusFilter='low'; currentPage=1; pagerExpanded=false" class="px-2.5 py-1 rounded-md transition" :class="statusFilter==='low'?'text-[#065F46] bg-[#D1FAE5]':'text-slate-500 hover:bg-slate-50'">低风险 <span x-text="countLow"></span></button>
+            </div>
+          </div>
+          <!-- 搜索状态提示 -->
+          <div x-show="searchActive" class="px-7 pb-3 flex items-center gap-2">
+            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#E6F7F4] text-[11.5px] text-[#047b6e]">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <span>搜索：</span>
+              <span class="mono font-medium" x-text="searchQuery"></span>
+              <span class="text-slate-400">·</span>
+              <span x-text="filteredShips.length+' 条结果'"></span>
+            </div>
+            <button @click="clearSearch()" class="text-[11px] text-slate-500 hover:text-red-600 transition flex items-center gap-1">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              清除
+            </button>
+          </div>
+          <!-- table -->
+          <div class="overflow-x-auto">
+          <table class="w-full text-[13px]">
+            <thead>
+              <tr class="text-[10.5px] mono uppercase tracking-wider text-slate-400 border-t border-b hairline">
+                <th class="text-left font-medium px-7 py-2.5">船舶 / 船长</th>
+                <th class="text-left font-medium px-3 py-2.5">IMO / MMSI</th>
+                <th class="text-left font-medium px-3 py-2.5">船型 · 船龄</th>
+                <th class="text-left font-medium px-3 py-2.5">ETA · 泊位</th>
+                <th class="text-left font-medium px-3 py-2.5">风险分</th>
+                <th class="text-left font-medium px-3 py-2.5">等级</th>
+                <th class="text-right font-medium px-7 py-2.5">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y hairline">
+              <template x-for="(ship, idx) in pagedShips" :key="ship.imo && ship.imo!=='-' ? ship.imo : (ship.name+'_'+idx)">
+                <tr class="data-row transition cursor-pointer" @click="goReport(ship.imo && ship.imo!=='-' ? ship.imo : null, ship.name)">
+                  <td class="px-7 py-3.5">
+                    <div class="font-medium text-[#0b1220] hover:text-[#00A896] transition" x-text="ship.name"></div>
+                    <div class="text-[11px] text-slate-500 mt-0.5">船长 · <span x-text="ship.captain"></span></div>
+                  </td>
+                  <td class="px-3 py-3.5 mono text-[12px] text-slate-600">
+                    <div x-text="ship.imo"></div>
+                    <div class="text-slate-400" x-text="ship.mmsi"></div>
+                  </td>
+                  <td class="px-3 py-3.5">
+                    <div class="text-[12.5px]" x-text="ship.type"></div>
+                    <div class="text-[11px] text-slate-500 mono" x-text="ship.age+' 年'"></div>
+                  </td>
+                  <td class="px-3 py-3.5">
+                    <div class="mono text-[12px] text-slate-700" x-text="ship.eta"></div>
+                    <div class="text-[11px] text-slate-500" x-text="ship.berth"></div>
+                  </td>
+                  <td class="px-3 py-3.5">
+                    <div class="flex items-center gap-2">
+                      <div class="w-14 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                        <div class="h-full rounded-full" :style="`width:${Math.min(ship.score,100)}%; background:${ship.level==='高'?'#DC2626':ship.level==='中'?'#D97706':'#059669'}`"></div>
+                      </div>
+                      <span class="mono text-[12.5px] font-medium" x-text="ship.score"></span>
+                      <template x-if="ship.hitCount">
+                        <span class="text-[10px] mono text-slate-400">·<span x-text="ship.hitCount"></span>条</span>
+                      </template>
+                    </div>
+                  </td>
+                  <td class="px-3 py-3.5">
+                    <div class="flex items-center gap-1.5">
+                      <span :class="ship.level==='高'?'tag tag-high':ship.level==='中'?'tag tag-mid':'tag tag-low'" x-text="ship.level+'风险'"></span>
+                      <template x-if="ship.veto">
+                        <span class="relative inline-block w-2 h-2 rounded-full" style="background:#7F1D1D; color:#7F1D1D;">
+                          <span class="absolute inset-0 rounded-full animate-ping" style="background:#7F1D1D;opacity:.6;"></span>
+                        </span>
+                      </template>
+                    </div>
+                  </td>
+                  <td class="px-7 py-3.5 text-right">
+                    <a :href="`risk-report-detail.html?id=${ship.imo}`" @click.stop
+                       class="text-[12px] font-medium text-[#0a1f44] hover:text-[#00A896] transition inline-flex items-center gap-1">
+                      查看报告
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                    </a>
+                  </td>
+                </tr>
+              </template>
+              <template x-if="filteredShips.length===0">
+                <tr><td colspan="7" class="px-7 py-8 text-center text-[12px] text-slate-400">当前过滤条件下无匹配船舶</td></tr>
+              </template>
+            </tbody>
+          </table>
+          </div>
+          <!-- 分页控件 -->
+          <div class="px-7 py-3 border-t hairline flex items-center justify-between text-[11.5px]">
+            <span class="text-slate-500">共 <span class="mono font-medium" x-text="filteredShips.length"></span> 条 · 第 <span class="mono" x-text="currentPage"></span>/<span class="mono" x-text="totalPages"></span> 页</span>
+            <div class="flex items-center gap-1">
+              <!-- 上一页 -->
+              <button @click="prevPage()" :disabled="currentPage<=1" class="w-7 h-7 rounded-md flex items-center justify-center transition" :class="currentPage<=1?'text-slate-300 cursor-not-allowed':'text-slate-600 hover:bg-slate-100'">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <!-- 页码 -->
+              <template x-for="p in visiblePages" :key="p">
+                <button @click="goPage(p)" class="min-w-[28px] h-7 rounded-md text-[11.5px] mono font-medium transition" :class="p===currentPage?'bg-[#0a1f44] text-white shadow-sm':'text-slate-600 hover:bg-slate-100'" x-text="p"></button>
+              </template>
+              <!-- 展开更多 / 省略号 -->
+              <template x-if="totalPages > (pagerExpanded?13:10)">
+                <span class="flex items-center gap-1">
+                  <span class="text-slate-400 mono">…</span>
+                  <button @click="goPage(totalPages)" class="min-w-[28px] h-7 rounded-md text-[11.5px] mono font-medium text-slate-600 hover:bg-slate-100 transition" x-text="totalPages"></button>
+                </span>
+              </template>
+              <!-- 下一页 -->
+              <button @click="nextPage()" :disabled="currentPage>=totalPages" class="w-7 h-7 rounded-md flex items-center justify-center transition" :class="currentPage>=totalPages?'text-slate-300 cursor-not-allowed':'text-slate-600 hover:bg-slate-100'">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+              </button>
+              <!-- 页码跳转 -->
+              <div class="ml-2 flex items-center gap-1 text-[11px] text-slate-500">
+                <span>跳至</span>
+                <input x-model="jumpPage" @keydown.enter="goPage(jumpPage)" type="text" class="w-10 h-7 rounded-md border border-slate-200 text-center mono text-[11.5px] focus:border-[#00a896] focus:ring-1 focus:ring-[#00a896]/20 outline-none transition" placeholder=""/>
+                <button @click="goPage(jumpPage)" class="h-7 px-2 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] transition">GO</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Risk Level Donut -->
+        <div data-stagger style="animation-delay:220ms" class="card col-span-12 lg:col-span-4 p-7 flex flex-col">
+          <div>
+            <div class="text-[18px] font-semibold tracking-tight">风险等级分布</div>
+            <div class="text-[12px] text-slate-500 mt-0.5">近 7 日累计 · <span class="mono" x-text="ships.length"></span> 艘</div>
+          </div>
+          <div id="donutChart" class="flex-1 min-h-[280px]"></div>
+          <div class="grid grid-cols-3 gap-3 pt-4 border-t hairline">
+            <div>
+              <div class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full" style="background:#059669"></i><span class="text-[10.5px] mono uppercase tracking-wider text-slate-500">低</span></div>
+              <div class="mono text-[20px] font-semibold mt-1" x-text="countLow"></div>
+            </div>
+            <div>
+              <div class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full" style="background:#D97706"></i><span class="text-[10.5px] mono uppercase tracking-wider text-slate-500">中</span></div>
+              <div class="mono text-[20px] font-semibold mt-1" x-text="countMid"></div>
+            </div>
+            <div>
+              <div class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full" style="background:#DC2626"></i><span class="text-[10.5px] mono uppercase tracking-wider text-slate-500">高</span></div>
+              <div class="mono text-[20px] font-semibold mt-1" x-text="countHigh"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== ROW 3 · 趋势 / 船型（Bento 平衡双栏） ===== -->
+      <section class="grid grid-cols-12 gap-6">
+        <!-- 7-day Trend -->
+        <div data-stagger style="animation-delay:300ms" class="card col-span-12 lg:col-span-7 p-7">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-[18px] font-semibold tracking-tight">近 7 日首靠船趋势</div>
+              <div class="text-[12px] text-slate-500 mt-0.5">按风险等级分层 · 高风险上浮显著</div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="flex items-center gap-3 text-[11px]">
+                <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-[2px]" style="background:#059669"></i><span class="text-slate-500">低</span></span>
+                <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-[2px]" style="background:#D97706"></i><span class="text-slate-500">中</span></span>
+                <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-[2px]" style="background:#DC2626"></i><span class="text-slate-500">高</span></span>
+              </div>
+              <div class="h-4 w-px bg-slate-200"></div>
+              <div class="text-[11px] mono text-slate-400 tracking-widest uppercase">W19 · 2026</div>
+            </div>
+          </div>
+          <div id="trendChart" class="mt-3 h-[260px]"></div>
+        </div>
+
+        <!-- Ship Type Breakdown (wider, dual-column) -->
+        <div data-stagger style="animation-delay:360ms" class="card col-span-12 lg:col-span-5 p-7">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-[18px] font-semibold tracking-tight">重点船型分布</div>
+              <div class="text-[12px] text-slate-500 mt-0.5">近 7 日 · 自动标记敏感船型</div>
+            </div>
+            <span class="text-[10.5px] mono text-slate-400 uppercase tracking-widest">TOP 6</span>
+          </div>
+          <div class="mt-5 grid grid-cols-2 gap-x-6 gap-y-4">
+            <template x-for="t in shipTypes" :key="t.name">
+              <div>
+                <div class="flex items-center justify-between text-[12.5px]">
+                  <span class="text-slate-700 flex items-center gap-1.5">
+                    <i class="w-1.5 h-1.5 rounded-full" :style="`background:${t.color}`"></i>
+                    <span x-text="t.name"></span>
+                  </span>
+                  <span class="mono text-slate-600" x-text="t.count"></span>
+                </div>
+                <div class="h-1.5 rounded-full bg-slate-100 mt-1.5 overflow-hidden">
+                  <div class="h-full rounded-full transition-all" :style="`width:${shipTypeMax?t.count/shipTypeMax*100:0}%; background:${t.color};`"></div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </section>
+
+      <!-- footer -->
+      <div class="mt-10 flex items-center justify-between text-[11px] mono tracking-wider uppercase text-slate-400">
+        <span>DONGGUAN MSA · 东莞首靠船识别助手 · V2.2</span>
+        <span>规则库最后更新 · <span x-text="new Date().toISOString().slice(0,10).replace(/-/g,'.')"></span> · <span x-text="currentUser">桂凯</span></span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ===== NANOBOT COMMAND PALETTE (Cmd/Ctrl + K) ===== -->
+<div x-cloak x-show="cmdkOpen"
+     x-transition:enter="palette-enter" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+     x-transition:leave="palette-enter" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+     @click.self="cmdkOpen=false"
+     class="fixed inset-0 z-[100] flex items-start justify-center pt-[14vh] px-4"
+     style="background:rgba(7,14,30,.55); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);">
+  <div x-show="cmdkOpen" @click.stop
+       x-transition:enter="palette-enter" x-transition:enter-start="opacity-0 translate-y-2 scale-[.98]" x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+       x-transition:leave="palette-enter" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-[.98]"
+       class="w-full max-w-[600px] rounded-[18px] bg-white shadow-2xl border hairline overflow-hidden"
+       style="box-shadow:0 30px 80px -20px rgba(7,14,30,.4), 0 0 0 1px rgba(15,23,42,.06);">
+
+    <!-- Search Row -->
+    <div class="flex items-center gap-3 px-5 py-4 border-b hairline">
+      <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:#E6F7F4;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00A896" stroke-width="1.8"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M8 13h.01M16 13h.01M9 17h6"/></svg>
+      </div>
+      <input x-ref="cmdkInput" type="text"
+             placeholder="问 Nanobot：今天的高风险船有哪几艘？"
+             class="flex-1 bg-transparent text-[14.5px] placeholder-slate-400 focus:outline-none text-slate-800">
+      <div class="flex items-center gap-1">
+        <kbd class="px-1.5 py-1 rounded bg-slate-100 border hairline text-slate-500">ESC</kbd>
+      </div>
+    </div>
+
+    <!-- Groups -->
+    <div class="max-h-[56vh] overflow-y-auto py-2">
+      <!-- Suggested -->
+      <div class="px-2">
+        <div class="px-3 py-1.5 text-[10.5px] mono uppercase tracking-widest text-slate-400">热门问题</div>
+        <template x-for="(q,i) in suggestedQs" :key="i">
+          <button :data-nb-ask="q.text" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] hover:bg-slate-50 text-left transition group">
+            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background:#F1F5F9;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            </span>
+            <div class="flex-1 min-w-0">
+              <div class="text-[13.5px] text-slate-800 truncate" x-text="q.text"></div>
+              <div class="text-[11px] text-slate-500 mt-0.5" x-text="q.hint"></div>
+            </div>
+            <svg class="w-3.5 h-3.5 text-slate-300 group-hover:text-[#00A896] transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </button>
+        </template>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="px-2 mt-1">
+        <div class="px-3 py-1.5 text-[10.5px] mono uppercase tracking-widest text-slate-400">快捷动作</div>
+        <template x-for="(a,i) in quickActions" :key="i">
+          <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] hover:bg-slate-50 text-left transition group">
+            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" :style="`background:${a.bg};`">
+              <span x-html="a.icon"></span>
+            </span>
+            <div class="flex-1 min-w-0">
+              <div class="text-[13.5px] text-slate-800 truncate" x-text="a.label"></div>
+              <div class="text-[11px] text-slate-500 mt-0.5" x-text="a.desc"></div>
+            </div>
+            <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+              <template x-for="k in a.keys" :key="k">
+                <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border hairline text-slate-500" x-text="k"></kbd>
+              </template>
+            </div>
+          </button>
+        </template>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="px-5 py-2.5 border-t hairline flex items-center justify-between text-[10.5px] mono text-slate-500" style="background:#fafbfc;">
+      <div class="flex items-center gap-4">
+        <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white border hairline rounded">↑↓</kbd> 选择</span>
+        <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white border hairline rounded">↵</kbd> 提问</span>
+        <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white border hairline rounded">⌘K</kbd> 开关</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="relative flex w-1.5 h-1.5">
+          <span class="absolute inset-0 rounded-full animate-ping" style="background:#00A896;opacity:.55;"></span>
+          <span class="relative w-1.5 h-1.5 rounded-full" style="background:#00A896;"></span>
+        </span>
+        <span class="tracking-wider uppercase">Nanobot · LLM Online</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function harborApp(){
+  return {
+    activeField:'imo',
+    fields:[
+      {key:'imo',label:'IMO',eg:'9876543'},
+      {key:'mmsi',label:'MMSI',eg:'412345678'},
+      {key:'name',label:'船名',eg:'粤东莞货2001'},
+      {key:'captain',label:'船长',eg:'陈海川'},
+    ],
+    nav:[
+      {id:'home',label:'指挥台',active:true,icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12 12 3l9 9"/><path d="M5 10v11h14V10"/></svg>',href:'index.html'},
+      {id:'upload',label:'计划上传',active:false,icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/><polyline points="7 9 12 4 17 9"/><line x1="12" y1="4" x2="12" y2="16"/></svg>',href:'plan-upload.html'},
+      {id:'query',label:'风险查询',active:false,icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',href:'risk-report.html'},
+      {id:'daily',label:'日报看板',active:false,icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M8 5v14"/></svg>',href:'daily-dashboard.html'},
+      {id:'rules',label:'规则库',active:false,icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16v4H4zM4 12h16v4H4zM4 20h10"/></svg>',href:'rules.html'},
+      {id:'bot',label:'Nanobot',active:false,icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M8 13h.01M16 13h.01M9 17h6"/></svg>'},
+      {id:'arch',label:'归档库',active:false,icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="5" rx="1"/><path d="M5 8v12h14V8M10 12h4"/></svg>',href:'archive.html'},
+    ],
+    ships:[
+      {name:'粤东莞货2001',captain:'陈海川',imo:'9876543',mmsi:'412345678',type:'集装箱船',age:18,eta:'05-12 15:40',berth:'沙田港3号泊位',score:68,level:'高',veto:true},
+      {name:'浙海运油19',captain:'林建峰',imo:'9712345',mmsi:'413098765',type:'油轮',age:22,eta:'05-12 16:20',berth:'立沙岛2号',score:82,level:'高',veto:true},
+      {name:'粤穗化工8',captain:'黄志诚',imo:'9823456',mmsi:'412567890',type:'化学品船',age:9,eta:'05-12 17:05',berth:'立沙岛1号',score:47,level:'中',veto:false},
+      {name:'闽安达7',captain:'张明辉',imo:'9654321',mmsi:'412445566',type:'散货船',age:14,eta:'05-12 18:30',berth:'麻涌港A泊位',score:38,level:'中',veto:false},
+      {name:'粤深蓝118',captain:'郑伟强',imo:'9998877',mmsi:'412223344',type:'客滚船',age:6,eta:'05-12 19:15',berth:'虎门客运码头',score:32,level:'中',veto:false},
+      {name:'粤东莞货3032',captain:'刘志坚',imo:'9445566',mmsi:'413334455',type:'集装箱船',age:7,eta:'05-12 20:50',berth:'沙田港5号',score:19,level:'低',veto:false},
+      {name:'粤新港货88',captain:'吴海涛',imo:'9556677',mmsi:'412889900',type:'杂货船',age:11,eta:'05-12 22:10',berth:'新沙港B区',score:14,level:'低',veto:false},
+    ],
+    searchQuery:'',
+    searchActive:false,
+    statusFilter:'all',
+    currentPage:1,
+    pageSize:6,
+    pagerExpanded:false,  // 是否展开更多页码
+    jumpPage:'',          // 跳转输入框
+    get filteredShips(){
+      let list = this.ships;
+      // 搜索过滤
+      if(this.searchActive && this.searchQuery.trim()){
+        const q = this.searchQuery.trim().toLowerCase();
+        const field = this.activeField;
+        list = list.filter(s => {
+          if(field==='imo')     return (s.imo||'').toLowerCase().includes(q);
+          if(field==='mmsi')    return (s.mmsi||'').toLowerCase().includes(q);
+          if(field==='name')    return (s.name||'').toLowerCase().includes(q);
+          if(field==='captain') return (s.captain||'').toLowerCase().includes(q);
+          return true;
+        });
+      }
+      // 风险等级过滤
+      if(this.statusFilter==='high') return list.filter(s=>s.level==='高');
+      if(this.statusFilter==='mid')  return list.filter(s=>s.level==='中');
+      if(this.statusFilter==='low')  return list.filter(s=>s.level==='低');
+      return list;
+    },
+    get totalPages(){ return Math.max(1, Math.ceil(this.filteredShips.length / this.pageSize)); },
+    get pagedShips(){
+      const start = (this.currentPage - 1) * this.pageSize;
+      return this.filteredShips.slice(start, start + this.pageSize);
+    },
+    // 可见页码列表：前10页 + 展开后再加3页，超出部分用跳转
+    get visiblePages(){
+      const total = this.totalPages;
+      const max = this.pagerExpanded ? 13 : 10;
+      const pages = [];
+      for(let i=1; i<=Math.min(total, max); i++) pages.push(i);
+      return pages;
+    },
+    goPage(p){
+      const n = Number(p);
+      if(n>=1 && n<=this.totalPages){ this.currentPage=n; this.jumpPage=''; }
+    },
+    prevPage(){ if(this.currentPage>1) this.currentPage--; },
+    doSearch(){
+      const q = this.searchQuery.trim();
+      if(!q){ this.searchActive=false; this.currentPage=1; return; }
+      this.searchActive = true;
+      this.currentPage = 1;
+      this.pagerExpanded = false;
+      // 如果搜索无结果且 PlanStore 中有数据，尝试跳转到详情页
+      if(this.filteredShips.length===0 && window.PlanStore){
+        const plans = PlanStore.getAll();
+        const field = this.activeField;
+        const match = plans.find(p => {
+          if(field==='imo')     return (p.imo||'').toLowerCase().includes(q.toLowerCase());
+          if(field==='mmsi')    return (p.mmsi||'').toLowerCase().includes(q.toLowerCase());
+          if(field==='name')    return (p.shipName||p['船名']||'').toLowerCase().includes(q.toLowerCase());
+          if(field==='captain') return (p.captain||p['船长姓名']||'').toLowerCase().includes(q.toLowerCase());
+          return false;
+        });
+        if(match){
+          const name = match.shipName || match['船名'] || '';
+          location.href = `risk-report-detail.html?name=${encodeURIComponent(name)}`;
+        }
+      }
+    },
+    clearSearch(){
+      this.searchQuery = '';
+      this.searchActive = false;
+      this.currentPage = 1;
+    },
+    nextPage(){
+      if(this.currentPage<this.totalPages) this.currentPage++;
+      // 当点击下一页时如果已到第10页边界，自动展开更多页码
+      if(this.currentPage>10 && !this.pagerExpanded) this.pagerExpanded=true;
+    },
+    get countAll(){ return this.ships.length; },
+    get countHigh(){ return this.ships.filter(s=>s.level==='高').length; },
+    get countMid(){ return this.ships.filter(s=>s.level==='中').length; },
+    get countLow(){ return this.ships.filter(s=>s.level==='低').length; },
+    get countVeto(){ return this.ships.filter(s=>s.veto).length; },
+    get planStoreTotal(){ try{ return window.PlanStore ? PlanStore.getAll().length : 0; }catch(e){ return 0; } },
+    // 跳转风险详情
+    goReport(id, name){ if(id && id!=='-') location.href = `risk-report-detail.html?id=${id}`; else if(name) location.href = `risk-report-detail.html?name=${encodeURIComponent(name)}`; },
+    navigate(item){ if(item.id==='bot'){ this.cmdkOpen=true; } else if(item.href && item.href!=='#'){ window.location.href=item.href; } },
+    shipTypes:[
+      {name:'油轮',count:0,color:'#DC2626'},
+      {name:'化学品',count:0,color:'#D97706'},
+      {name:'LNG / LPG',count:0,color:'#7C3AED'},
+      {name:'客滚船',count:0,color:'#0891B2'},
+      {name:'集装箱',count:0,color:'#0a1f44'},
+      {name:'散杂货',count:0,color:'#475569'},
+    ],
+    get shipTypeMax(){
+      if(!this.shipTypes.length) return 1;
+      return Math.max(...this.shipTypes.map(t=>t.count), 1);
+    },
+    // ----- Nanobot Command Palette -----
+    cmdkOpen:false,
+    // ----- 用户菜单 -----
+    loginTime:'--:--',
+    userMenuOpen:false,
+    currentUser:'用户',
+    currentUserInitial:'用',
+    currentUserDept:'',
+    currentUserRole:'执法员',
+    // ----- 个人资料编辑 -----
+    userProfile:{ name:'桂凯', phone:'', dept:'船舶交通管理中心', role:'执法员', id:null },
+    editForm:{ name:'', phone:'', dept:'', role:'' },
+    profileEditOpen:false,
+    profileSaved:false,
+    openProfileEdit(){
+      // 从当前登录用户加载数据
+      let u = null;
+      try{ if(typeof window.dgmsaCurrentUser==='function') u = window.dgmsaCurrentUser(); }catch(e){}
+      if(u){
+        this.userProfile = { name:u.name||'桂凯', phone:u.phone||'', dept:u.dept||'船舶交通管理中心', role:u.role||'执法员', id:u.id };
+      }
+      this.editForm = { name:this.userProfile.name, phone:this.userProfile.phone, dept:this.userProfile.dept, role:this.userProfile.role };
+      this.profileEditOpen = true;
+      this.profileSaved = false;
+    },
+    closeProfileEdit(){ this.profileEditOpen = false; },
+    saveProfile(){
+      const form = this.editForm;
+      if(!form.name || !form.name.trim()){ alert('姓名不能为空'); return; }
+      if(!form.dept || !form.dept.trim()){ alert('所属部门不能为空'); return; }
+      if(typeof window.dgmsaUpdateUser==='function' && this.userProfile.id){
+        const result = window.dgmsaUpdateUser(this.userProfile.id, {
+          name: form.name.trim(),
+          phone: form.phone.trim(),
+          dept: form.dept.trim(),
+          role: form.role.trim()
+        });
+        if(result && result.ok){
+          this.userProfile = Object.assign({}, this.userProfile, result.user);
+          this.profileSaved = true;
+          setTimeout(()=>{ this.profileEditOpen=false; this.profileSaved=false; }, 800);
+        } else {
+          alert(result.msg || '保存失败');
+        }
+      } else {
+        // 无后端时仅前端更新
+        this.userProfile.name = form.name.trim();
+        this.userProfile.phone = form.phone.trim();
+        this.userProfile.dept = form.dept.trim();
+        this.userProfile.role = form.role.trim();
+        this.profileSaved = true;
+        setTimeout(()=>{ this.profileEditOpen=false; this.profileSaved=false; }, 800);
+      }
+    },
+    logout(){
+      if(!confirm('确认退出当前登录？')) return;
+      if(typeof window.dgmsaLogout==='function'){ window.dgmsaLogout(); }
+      else{ try{ sessionStorage.removeItem('dgmsa_auth'); localStorage.removeItem('dgmsa_auth'); }catch(e){} location.replace('login.html'); }
+    },
+    suggestedQs:[
+      {text:'今天的高风险首靠船有哪几艘？',hint:'基于今日进港计划 · 自动风险评分'},
+      {text:'MMSI 412345678 这艘船上次来是什么时候？',hint:'查询近 6 个月进出港记录'},
+      {text:'近 7 天油轮首靠船同比上涨多少？',hint:'趋势分析 · 按船型分层'},
+      {text:'陈海川船长今年来过几次虎门？',hint:'船长维度聚合'},
+    ],
+    quickActions:[
+      {label:'生成今日日报 PDF',desc:'含 KPI / 船舶清单 / 规则命中',bg:'#FEF3C7',keys:['G','D'],
+       icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'},
+      {label:'打开规则库',desc:'查看与编辑风险规则',bg:'#E0E7FF',keys:['G','R'],
+       icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4338CA" stroke-width="1.6"><path d="M4 4h16v4H4zM4 12h16v4H4zM4 20h10"/></svg>'},
+      {label:'跳转归档库',desc:'历史首靠船报告检索',bg:'#E6F7F4',keys:['G','A'],
+       icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00A896" stroke-width="1.6"><rect x="3" y="3" width="18" height="5" rx="1"/><path d="M5 8v12h14V8M10 12h4"/></svg>'},
+    ],
+    init(){
+      // 读取登录用户信息（auth-guard 注入）
+      try{
+        const u = (typeof window.dgmsaCurrentUser==='function') ? window.dgmsaCurrentUser() : null;
+        if(u){
+          this.currentUser = u.name || '用户';
+          this.currentUserInitial = (u.name || '用').charAt(0);
+          this.currentUserDept = u.dept || '';
+          this.currentUserRole = u.role || '执法员';
+          if(u.loginAt){
+            const d = new Date(u.loginAt);
+            if(!isNaN(d)){
+              const pad=(n)=>String(n).padStart(2,'0');
+              this.loginTime = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            }
+          }
+        }
+      }catch(e){}
+      // ===== 跑规则引擎，重算每艘船 score / level / veto =====
+      try{
+        if(window.RuleEngine && Array.isArray(window.SHIP_LIST) && window.SHIP_LIST.length){
+          const enriched = window.SHIP_LIST.map(s => {
+            try{
+              const r = window.RuleEngine.evalShip(s);
+              if(r && r.hits && r.hits.length){
+                return Object.assign({}, s, { score:r.score, level:r.level, veto:r.veto, hitCount:r.hits.length });
+              }
+            }catch(e){}
+            return Object.assign({}, s, { hitCount:0 });
+          });
+          this.ships = enriched;
+        }
+      }catch(e){ console.warn('rule engine error', e); }
+
+      // ===== 从 PlanStore 加载今日上传的数据，合并首靠船到指挥台 =====
+      this.syncFromPlanStore();
+      // ===== 动态计算船型分布 =====
+      this.refreshShipTypes();
+      this.$nextTick(()=>{ this.renderDonut(); this.renderTrend(); });
+      window.addEventListener('resize',()=>{ this._donut&&this._donut.resize(); this._trend&&this._trend.resize(); });
+      // Cmd/Ctrl + K → toggle palette ; Esc → close
+      window.addEventListener('keydown',(e)=>{
+        const k=(e.key||'').toLowerCase();
+        if((e.metaKey||e.ctrlKey) && k==='k'){
+          e.preventDefault();
+          this.cmdkOpen=!this.cmdkOpen;
+          if(this.cmdkOpen){ this.$nextTick(()=>{ this.$refs.cmdkInput && this.$refs.cmdkInput.focus(); }); }
+        } else if(k==='escape' && this.cmdkOpen){
+          this.cmdkOpen=false;
+        }
+      });
+      // Focus input when opened via click
+      this.$watch && this.$watch('cmdkOpen',(v)=>{
+        if(v){ this.$nextTick(()=>{ this.$refs.cmdkInput && this.$refs.cmdkInput.focus(); }); }
+      });
+      // ===== Nanobot 嵌入 =====
+      const self=this;
+      const bindNb=()=>{
+        if(!window.NanobotChat) return setTimeout(bindNb,80);
+        NanobotChat.setContext(`你是「东莞首靠船识别助手 · Nanobot」，当前页面：指挥台。\n用户是广东海事局东莞局执法人员，可基于近6个月进出港计划库 + PSC/FSC + 安检处罚 + 配员符合率四类数据回答首靠船风险识别问题。\n首靠四字段：船名 + 船舶总吨 + 船长姓名 + 联系方式。\n回答风格：简洁、列点、数字优先；引用法规时附条款编号。`);
+        // 注入 PlanStore 近6个月进出港计划数据摘要
+        try{
+          const plans = window.PlanStore ? PlanStore.getAll() : [];
+          if(plans.length > 0){
+            const shipMap = {};
+            plans.forEach(p => {
+              const name = p.shipName || '';
+              if(!name) return;
+              if(!shipMap[name]) shipMap[name] = { type:p.shipType||'', gt:p.gt||'', captain:p.captain||'', visits:[] };
+              shipMap[name].visits.push(p.eta || p.date || '');
+            });
+            let ds = `\n\n[近6个月进出港计划库数据（共 ${plans.length} 条记录，${Object.keys(shipMap).length} 艘不同船舶）]\n`;
+            Object.keys(shipMap).forEach(name => {
+              const s = shipMap[name];
+              const recent = s.visits.filter(Boolean).sort().reverse()[0] || '无';
+              ds += `- ${name}（${s.type}，总吨${s.gt}，船长${s.captain}），近期到港：${recent}，共${s.visits.length}次记录\n`;
+            });
+            // 注入今日首靠船清单
+            if(self.ships && self.ships.length > 0){
+              ds += `\n[今日首靠船清单（${self.ships.length} 艘）]\n`;
+              self.ships.forEach(s => {
+                ds += `- ${s.name}（${s.type}），船长 ${s.captain}，风险分 ${s.score}（${s.level}${s.veto?' · 一票否决':''}${s.hitCount ? ' · 命中'+s.hitCount+'条规则' : ''}），ETA ${s.eta}，泊位 ${s.berth}\n`;
+              });
+            }
+            NanobotChat.appendContext(ds);
+          }
+        }catch(e){ console.warn('[Nanobot context]', e); }
+        NanobotChat.bindPalette({
+          input:'[x-ref="cmdkInput"]',
+          suggestions:'[data-nb-ask]',
+          closePalette:()=>{ self.cmdkOpen=false; }
+        });
+      };
+      bindNb();
+    },
+    // ===== 同步 PlanStore 数据到指挥台船舶列表 =====
+    syncFromPlanStore(){
+      if(!window.PlanStore) return;
+      try{
+        const plans = PlanStore.getAll();
+        if(!plans || !plans.length) return;
+        // 获取已有船名集合（避免重复）
+        const existingNames = new Set(this.ships.map(s => s.name));
+        // 筛选今日入库的计划（ingestAt 为今天）
+        const today = new Date().toISOString().slice(0,10);
+        const todayPlans = plans.filter(p => p.ingestAt && p.ingestAt.slice(0,10) === today);
+        // 构建 sigKey 函数（与 PlanStore 一致）
+        const sig = (r) => {
+          const n = String(r.shipName||r['船名']||'').trim();
+          const g = String(r.gt||r['船舶总吨']||'').replace(/[^\d]/g,'');
+          const c = String(r.captain||r['船长姓名']||'').trim();
+          const ph = String(r.phone||r['联系方式']||'').replace(/[\s\-]/g,'');
+          return n+'|'+g+'|'+c+'|'+ph;
+        };
+        // 统计每个 sigKey 在今日之前的记录数（判断首靠）
+        const historicPlans = plans.filter(p => !p.ingestAt || p.ingestAt.slice(0,10) < today);
+        const historicKeys = new Set();
+        historicPlans.forEach(p => historicKeys.add(sig(p)));
+        // 也与 SHIP_LIST 比对
+        const shipListNames = new Set((window.SHIP_LIST||[]).map(s => s.name));
+
+        // 对每条今日计划，判断是否首靠 & 不在当前列表中
+        const newShips = [];
+        const seenNames = new Set();
+        todayPlans.forEach(p => {
+          const name = p.shipName || p['船名'] || '';
+          if(!name || existingNames.has(name) || seenNames.has(name)) return;
+          // 首靠判定：今日之前的历史库中无相同 sigKey，且不在 SHIP_LIST 中
+          const key = sig(p);
+          if(historicKeys.has(key) || shipListNames.has(name)) return;
+          seenNames.add(name);
+          // 构建 ship 兼容对象
+          const ship = {
+            name: name,
+            captain: p.captain || p['船长姓名'] || '',
+            imo: p.imo || '-',
+            mmsi: p.mmsi || '-',
+            type: p.shipType || p['船舶类型'] || '未知',
+            age: 0,
+            eta: (p.eta || p['进港时间'] || '').replace(/^\d{4}-/, '').slice(0,11),
+            berth: p.berth || p['靠泊码头'] || '',
+            gt: parseInt(p.gt || p['船舶总吨'] || 0) || 0,
+            score: 0, level: '低', veto: false, hitCount: 0,
+            fromPlanStore: true, // 标记来源
+          };
+          // 通过规则引擎评估风险
+          if(window.RuleEngine){
+            try{
+              const metrics = RuleEngine.buildMetrics ? RuleEngine.buildMetrics(p) : {};
+              const fakeShip = Object.assign({}, ship, { metrics: metrics });
+              const r = RuleEngine.evalShip(fakeShip);
+              if(r){
+                ship.score = r.score || 0;
+                ship.level = r.level || '低';
+                ship.veto = r.veto || false;
+                ship.hitCount = (r.hits && r.hits.length) || 0;
+              }
+            }catch(e){}
+          }
+          newShips.push(ship);
+        });
+        // 合并到 ships（新上传的排在前面）
+        if(newShips.length > 0){
+          this.ships = [...newShips, ...this.ships];
+        }
+      }catch(e){ console.warn('[syncFromPlanStore]', e); }
+    },
+    // ===== 动态计算船型分布 =====
+    refreshShipTypes(){
+      const TYPE_RULES = [
+        { name:'油轮',     match:t => /油|tanker/i.test(t),                   color:'#DC2626' },
+        { name:'化学品',   match:t => /化学|chem/i.test(t),                   color:'#D97706' },
+        { name:'LNG / LPG',match:t => /lng|lpg|液化/i.test(t),               color:'#7C3AED' },
+        { name:'客滚船',   match:t => /客滚|客|ferry/i.test(t),               color:'#0891B2' },
+        { name:'集装箱',   match:t => /集装箱|container/i.test(t),            color:'#0a1f44' },
+        { name:'散杂货',   match:t => true,                                   color:'#475569' },
+      ];
+      const counts = {};
+      TYPE_RULES.forEach(r => counts[r.name] = 0);
+      this.ships.forEach(s => {
+        const t = s.type || '';
+        for(const r of TYPE_RULES){ if(r.match(t)){ counts[r.name]++; break; } }
+      });
+      this.shipTypes = TYPE_RULES.map(r => ({ name:r.name, count:counts[r.name], color:r.color }));
+    },
+    renderDonut(){
+      const el=document.getElementById('donutChart'); if(!el) return;
+      this._donut=echarts.init(el);
+      const total = this.ships.length;
+      const low = this.countLow, mid = this.countMid, high = this.countHigh;
+      this._donut.setOption({
+        tooltip:{trigger:'item',backgroundColor:'#0b1220',borderColor:'transparent',textStyle:{color:'#fff',fontFamily:'Geist Mono',fontSize:11}},
+        legend:{show:false},
+        series:[{
+          type:'pie', radius:['62%','88%'], avoidLabelOverlap:false,
+          itemStyle:{borderColor:'#fff',borderWidth:3,borderRadius:4},
+          label:{show:true,position:'center',formatter:`{b|${total}}\n{d|首靠船总数}`,rich:{
+            b:{fontSize:34,fontFamily:'Geist Mono',fontWeight:600,color:'#0b1220'},
+            d:{fontSize:10,color:'#94a3b8',letterSpacing:2,padding:[6,0,0,0],fontFamily:'Geist'}
+          }},
+          emphasis:{label:{show:true}},
+          data:[
+            {value:low,name:'低风险',itemStyle:{color:'#059669'}},
+            {value:mid,name:'中风险',itemStyle:{color:'#D97706'}},
+            {value:high,name:'高风险',itemStyle:{color:'#DC2626'}},
+          ]
+        }]
+      });
+    },
+    renderTrend(){
+      const el=document.getElementById('trendChart'); if(!el) return;
+      this._trend=echarts.init(el);
+      const days=['05/06','05/07','05/08','05/09','05/10','05/11','05/12'];
+      this._trend.setOption({
+        grid:{top:10,right:12,bottom:22,left:28},
+        tooltip:{trigger:'axis',backgroundColor:'#0b1220',borderColor:'transparent',textStyle:{color:'#fff',fontFamily:'Geist Mono',fontSize:11}},
+        legend:{show:false},
+        xAxis:{type:'category',data:days,axisLine:{lineStyle:{color:'rgba(15,23,42,.1)'}},axisTick:{show:false},axisLabel:{color:'#94a3b8',fontFamily:'Geist Mono',fontSize:10,letterSpacing:1}},
+        yAxis:{type:'value',splitLine:{lineStyle:{color:'rgba(15,23,42,.05)',type:'dashed'}},axisLabel:{color:'#94a3b8',fontFamily:'Geist Mono',fontSize:10}},
+        series:[
+          {name:'低',type:'bar',stack:'x',data:[3,2,4,5,3,3,2],itemStyle:{color:'#059669',borderRadius:[0,0,0,0]},barWidth:18},
+          {name:'中',type:'bar',stack:'x',data:[2,3,2,3,2,3,3],itemStyle:{color:'#D97706'}},
+          {name:'高',type:'bar',stack:'x',data:[1,1,2,1,1,1,2],itemStyle:{color:'#DC2626',borderRadius:[4,4,0,0]}},
+        ]
+      });
+    }
+  };
+}
+</script>
+<!-- ===== 个人资料编辑弹窗 ===== -->
+<div x-show="profileEditOpen" x-cloak
+     class="fixed inset-0 z-[60] flex items-center justify-center"
+     style="background:rgba(11,18,32,.45); backdrop-filter:blur(4px);"
+     @keydown.escape.window="closeProfileEdit()">
+  <div x-show="profileEditOpen" x-transition.opacity.duration.150ms
+       class="card w-full max-w-md mx-4 overflow-hidden" style="background:#fff;">
+    <!-- Header -->
+    <div class="px-5 py-4 border-b hairline flex items-center justify-between" style="background:#fafbfc;">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center" style="background:#0a1f44;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00A896" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+        <span class="text-[15px] font-medium" style="color:var(--text-primary);">个人资料</span>
+      </div>
+      <button @click="closeProfileEdit()" class="text-slate-400 hover:text-slate-600 transition">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <!-- Form -->
+    <div class="px-5 py-4 space-y-4">
+      <div>
+        <label class="block text-[11px] uppercase tracking-wider mono mb-1.5" style="color:var(--text-tertiary);">姓名</label>
+        <input x-model="editForm.name" type="text" class="w-full px-3 py-2 rounded-lg border hairline text-[13px] focus-ring transition" style="border-color:var(--border-soft);" placeholder="请输入姓名">
+      </div>
+      <div>
+        <label class="block text-[11px] uppercase tracking-wider mono mb-1.5" style="color:var(--text-tertiary);">手机号</label>
+        <input x-model="editForm.phone" type="text" class="w-full px-3 py-2 rounded-lg border hairline text-[13px] focus-ring transition" style="border-color:var(--border-soft);" placeholder="请输入手机号">
+      </div>
+      <div>
+        <label class="block text-[11px] uppercase tracking-wider mono mb-1.5" style="color:var(--text-tertiary);">所属部门</label>
+        <input x-model="editForm.dept" type="text" class="w-full px-3 py-2 rounded-lg border hairline text-[13px] focus-ring transition" style="border-color:var(--border-soft);" placeholder="如：虎门海事处 · 一队">
+      </div>
+      <div>
+        <label class="block text-[11px] uppercase tracking-wider mono mb-1.5" style="color:var(--text-tertiary);">职务</label>
+        <input x-model="editForm.role" type="text" class="w-full px-3 py-2 rounded-lg border hairline text-[13px] focus-ring transition" style="border-color:var(--border-soft);" placeholder="如：执法员">
+      </div>
+    </div>
+    <!-- Footer -->
+    <div class="px-5 py-3.5 border-t hairline flex items-center justify-end gap-2.5" style="background:#fafbfc;">
+      <button @click="closeProfileEdit()" class="px-4 py-2 rounded-lg text-[13px] transition hover:bg-slate-100" style="color:var(--text-secondary);">取消</button>
+      <button @click="saveProfile()" class="px-4 py-2 rounded-lg text-[13px] btn-primary transition" :disabled="profileSaved">
+        <span x-show="!profileSaved">保存</span>
+        <span x-show="profileSaved" class="flex items-center gap-1.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>
+          已保存
+        </span>
+      </button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

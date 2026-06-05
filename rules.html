@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>东莞首靠船识别助手 · 规则库管理</title>
+<script src="auth-guard.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+<script defer src="nanobot-chat.js?v=3"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-base:#f7f8fa; --bg-card:#ffffff; --bg-elevated:#fafbfc;
+    --border-hair:rgba(15,23,42,.06); --border-soft:rgba(15,23,42,.10);
+    --text-primary:#0b1220; --text-secondary:#475569; --text-tertiary:#94a3b8;
+    --brand-deep:#0a1f44; --brand-ink:#142c5c;
+    --accent:#00a896; --accent-soft:#e6f7f4;
+    --risk-low:#059669; --risk-mid:#d97706; --risk-high:#dc2626; --risk-veto:#7f1d1d;
+  }
+  html,body{background:var(--bg-base); color:var(--text-primary); font-family:"Geist","HarmonyOS Sans SC","PingFang SC",sans-serif; -webkit-font-smoothing:antialiased;}
+  .mono{font-family:"Geist Mono",ui-monospace,monospace; font-feature-settings:"tnum";}
+  .card{background:var(--bg-card); border:1px solid var(--border-hair); border-radius:20px; box-shadow:0 1px 2px rgba(11,18,32,.04), 0 16px 32px -18px rgba(11,18,32,.08);}
+  .hairline{border-color:var(--border-hair);}
+  .btn-primary{background:var(--brand-deep); color:#fff;}
+  .btn-primary:hover{background:var(--brand-ink);}
+  .btn-accent{background:var(--accent); color:#fff;}
+  .btn-ghost{border:1px solid rgba(10,31,68,.18); color:var(--brand-deep); background:transparent;}
+  .btn-ghost:hover{background:rgba(10,31,68,.04);}
+  .tag{border-radius:6px; padding:3px 9px; font-size:11px; letter-spacing:.04em; font-weight:500; text-transform:uppercase;}
+  .tag-low{background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;}
+  .tag-mid{background:#fffbeb;color:#b45309;border:1px solid #fcd34d;}
+  .tag-high{background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;}
+  .tag-veto{background:#450a0a;color:#fecaca;}
+  .tag-ghost{background:transparent; color:var(--text-secondary); border:1px solid var(--border-soft);}
+  .tag-draft{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;}
+  .tag-active{background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;}
+  [data-stagger]{opacity:0; transform:translateY(8px); animation:riseIn .52s cubic-bezier(.16,1,.3,1) forwards;}
+  @keyframes riseIn{to{opacity:1; transform:translateY(0);}}
+  .focus-ring:focus{outline:none; box-shadow:0 0 0 3px rgba(0,168,150,.25);}
+  ::-webkit-scrollbar{width:8px;height:8px;} ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px;}
+  [x-cloak]{display:none !important;}
+  kbd{font-family:"Geist Mono",ui-monospace,monospace; font-size:10px; line-height:1;}
+  .palette-enter{transition:opacity .18s ease, transform .28s cubic-bezier(.16,1,.3,1);}
+  .data-row:hover{background:#f8fafc;}
+  .data-row.active{background:#ecfdf5;}
+  /* Toggle switch */
+  .switch{width:32px; height:18px; border-radius:9999px; position:relative; background:#cbd5e1; transition:all .22s cubic-bezier(.16,1,.3,1); cursor:pointer;}
+  .switch::after{content:""; position:absolute; width:14px; height:14px; border-radius:9999px; background:#fff; top:2px; left:2px; box-shadow:0 1px 2px rgba(11,18,32,.15); transition:all .22s cubic-bezier(.16,1,.3,1);}
+  .switch.on{background:#00a896;}
+  .switch.on::after{left:16px;}
+  /* Tree node */
+  .tree-node{display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:8px; cursor:pointer; transition:all .18s;}
+  .tree-node:hover{background:#f1f5f9;}
+  .tree-node.active{background:#E6F7F4; color:#0a1f44;}
+  .tree-node.active .count{background:#00A896;color:#fff;}
+  .count{font-family:"Geist Mono",monospace; font-size:10px; background:#e2e8f0; color:#64748b; border-radius:4px; padding:1px 6px;}
+  /* Drawer */
+  .drawer-enter-from, .drawer-leave-to{transform:translateX(100%);}
+  /* condition chip */
+  .chip{display:inline-flex; align-items:center; gap:6px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:6px; padding:3px 9px; font-family:"Geist Mono",monospace; font-size:11.5px; color:#334155;}
+  .chip-op{background:#0a1f44;color:#fff; border-color:#0a1f44; text-transform:uppercase; letter-spacing:.08em; font-size:10.5px;}
+  .chip-val{background:#fff;}
+  .field{border:1px solid rgba(15,23,42,.12); border-radius:10px; padding:9px 12px; background:#fff;}
+  .field:focus{outline:none; border-color:#00A896; box-shadow:0 0 0 3px rgba(0,168,150,.12);}
+  .grain{position:fixed; inset:0; z-index:50; pointer-events:none; opacity:.025; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+</style>
+</head>
+<body x-data="rulesApp()" x-init="init()" class="min-h-[100dvh]">
+<div class="grain" aria-hidden="true"></div>
+
+<!-- ===== TOP BAR ===== -->
+<header class="sticky top-0 z-40 border-b hairline" style="background:#0a1f44;">
+  <div class="max-w-[1680px] mx-auto h-16 px-6 md:px-10 flex items-center gap-6">
+    <div class="flex items-center gap-3 shrink-0">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+        <rect x="2" y="2" width="28" height="28" rx="6" stroke="#00A896" stroke-width="1.5"/>
+        <path d="M8 20 Q16 10 24 20" stroke="#00A896" stroke-width="1.5" fill="none"/>
+        <path d="M8 22 Q16 14 24 22" stroke="#fff" stroke-width="1.2" fill="none" opacity=".7"/>
+        <circle cx="16" cy="13" r="1.8" fill="#00A896"/>
+      </svg>
+      <div class="leading-tight">
+        <div class="text-[15px] font-semibold text-white tracking-tight">东莞首靠船识别助手</div>
+        <div class="text-[11px] text-white/55 tracking-wider mono">DG-MSA · v2.0.3</div>
+      </div>
+    </div>
+    <div class="flex-1 flex items-center gap-2 text-[12px] mono tracking-wide text-white/55">
+      <a class="hover:text-white transition cursor-pointer">指挥台</a>
+      <span>/</span>
+      <span class="text-white">规则库管理</span>
+    </div>
+    <div class="flex items-center gap-4 shrink-0">
+      <button @click="cmdkOpen=true" type="button"
+              class="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-white/[.06] hover:bg-white/[.12] border border-white/10 transition text-[10.5px] text-white/70 hover:text-white">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.5 10a2.5 2.5 0 1 1 3.8 2.1c-.8.5-1.3 1-1.3 1.9"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
+        <span class="mono tracking-wider">Ask Nanobot</span>
+        <span class="inline-flex items-center gap-0.5 ml-1 pl-1.5 border-l border-white/15">
+          <kbd class="text-white/60">⌘</kbd><kbd class="text-white/60">K</kbd>
+        </span>
+      </button>
+      <div class="h-6 w-px bg-white/15"></div>
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center font-medium text-[12px] mono" style="background:#00A896;color:#0a1f44;" x-text="currentUserInitial"></div>
+        <div class="leading-tight hidden md:block">
+          <div class="text-[13px] text-white" x-text="currentUser"></div>
+          <div class="text-[10px] text-white/50 tracking-wider" x-text="currentUserDept"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===== LAYOUT ===== -->
+<div class="flex">
+  <!-- Rail Nav -->
+  <aside class="shrink-0 w-[72px] border-r hairline bg-white min-h-[calc(100dvh-64px)] sticky top-16">
+    <nav class="flex flex-col items-center py-5 gap-1">
+      <template x-for="item in nav" :key="item.id">
+        <button @click="item.id==='bot' ? (cmdkOpen=true) : (item.href ? location.href=item.href : null)"
+                :class="item.active ? 'text-[#0a1f44] bg-[#E6F7F4]' : 'text-slate-500 hover:text-[#0a1f44] hover:bg-slate-50'"
+                class="w-12 h-12 rounded-[10px] flex items-center justify-center relative transition-all group">
+          <template x-if="item.active"><span class="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-[#00A896]"></span></template>
+          <span x-html="item.icon"></span>
+          <span class="absolute left-full ml-2 px-2.5 py-1 rounded bg-[#0b1220] text-white text-[11px] whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition z-50" x-text="item.label"></span>
+        </button>
+      </template>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 min-w-0">
+    <div class="max-w-[1680px] mx-auto px-6 md:px-10 py-8">
+
+      <!-- Page Title -->
+      <div data-stagger class="mb-7 flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <div class="flex items-center gap-2 text-[11px] mono tracking-wider text-slate-400 uppercase mb-2">
+            <span>Admin</span><span>/</span><span class="text-slate-600">Rule Engine</span>
+          </div>
+          <h1 class="text-[30px] font-semibold tracking-tight leading-none text-[#0b1220]">
+            风险规则库 <span class="text-slate-400 font-normal text-[22px] ml-1">· Rule Engine</span>
+          </h1>
+          <p class="mt-2 text-[13px] text-slate-500">
+            共 <span class="mono font-medium text-[#0b1220]" x-text="totalCount"></span> 条规则 ·
+            启用 <span class="mono font-medium" style="color:#059669;" x-text="activeCount"></span> ·
+            草稿 <span class="mono font-medium text-[#475569]" x-text="draftCount"></span> ·
+            一票否决 <span class="mono font-medium" style="color:#7F1D1D;" x-text="vetoCount"></span> ·
+            版本 <span class="mono text-[#0b1220]">v2.0.3</span> · 最后更新 <span class="mono" x-text="(rules[0]&&rules[0].updated)||'--'"></span>
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="file" x-ref="importFile" accept=".json,application/json" class="hidden" @change="importJSON($event)">
+          <button @click="triggerImport()" class="btn-ghost px-3.5 py-2 rounded-[10px] text-[12px] flex items-center gap-1.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+            导入 JSON
+          </button>
+          <button @click="exportJSON()" class="btn-ghost px-3.5 py-2 rounded-[10px] text-[12px] flex items-center gap-1.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            导出
+          </button>
+          <button @click="resetDefaults()" class="btn-ghost px-3.5 py-2 rounded-[10px] text-[12px] flex items-center gap-1.5" title="恢复为系统默认规则">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            恢复默认
+          </button>
+          <div class="h-6 w-px bg-slate-200 mx-1"></div>
+          <button @click="openCreate()" class="btn-primary px-4 py-2 rounded-[10px] text-[12px] font-medium flex items-center gap-1.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            新增规则
+          </button>
+          <button @click="exportJSON()" class="btn-accent px-4 py-2 rounded-[10px] text-[12px] font-medium flex items-center gap-1.5" title="导出当前所有规则为 JSON 版本快照">
+            发布版本
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main split -->
+      <div class="grid grid-cols-12 gap-6">
+        <!-- ===== LEFT · Category Tree ===== -->
+        <div data-stagger style="animation-delay:60ms" class="col-span-12 lg:col-span-3">
+          <div class="card p-5 sticky top-24">
+            <div class="flex items-center justify-between mb-4">
+              <div class="text-[13.5px] font-semibold tracking-tight">规则分类</div>
+              <span class="text-[10.5px] mono text-slate-400 uppercase tracking-widest">DIM</span>
+            </div>
+            <!-- Search -->
+            <div class="relative mb-3">
+              <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" x-model="query" placeholder="搜索规则 ID / 名称" class="w-full pl-9 pr-3 py-2 text-[12.5px] rounded-[10px] border hairline bg-white focus:outline-none focus:border-[#00A896] focus:ring-2 focus:ring-[#00A896]/15 placeholder-slate-400">
+            </div>
+            <!-- Tree -->
+            <div class="space-y-0.5">
+              <template x-for="c in categories" :key="c.key">
+                <div>
+                  <div class="tree-node" :class="{'active':active===c.key}" @click="active=c.key">
+                    <span class="w-4 h-4 flex items-center justify-center" :style="`color:${c.color};`" x-html="c.icon"></span>
+                    <span class="flex-1 text-[13px]" x-text="c.label"></span>
+                    <span class="count" x-text="countByCat(c.key)"></span>
+                  </div>
+                </div>
+              </template>
+            </div>
+            <div class="h-px bg-slate-100 my-4"></div>
+            <!-- Summary -->
+            <div class="space-y-3">
+              <div class="flex items-center justify-between text-[12px]">
+                <span class="flex items-center gap-1.5 text-slate-500">
+                  <i class="w-1.5 h-1.5 rounded-full" style="background:#059669"></i> 已启用
+                </span>
+                <span class="mono font-semibold text-[13px]"><span x-text="activeCount"></span> / <span x-text="totalCount"></span></span>
+              </div>
+              <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full" :style="`width:${totalCount?(activeCount/totalCount*100).toFixed(1):0}%; background:linear-gradient(90deg,#00A896 0%, #059669 100%);`"></div>
+              </div>
+              <div class="grid grid-cols-3 gap-2 pt-2">
+                <div class="text-center">
+                  <div class="text-[9.5px] mono text-slate-400 uppercase tracking-widest">VETO</div>
+                  <div class="mono text-[16px] font-semibold mt-0.5" style="color:#7F1D1D" x-text="vetoCount"></div>
+                </div>
+                <div class="text-center">
+                  <div class="text-[9.5px] mono text-slate-400 uppercase tracking-widest">RULES</div>
+                  <div class="mono text-[16px] font-semibold mt-0.5" style="color:#DC2626" x-text="totalCount"></div>
+                </div>
+                <div class="text-center">
+                  <div class="text-[9.5px] mono text-slate-400 uppercase tracking-widest">DRAFT</div>
+                  <div class="mono text-[16px] font-semibold mt-0.5 text-slate-500" x-text="draftCount"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== RIGHT · Rules Table ===== -->
+        <div data-stagger style="animation-delay:120ms" class="col-span-12 lg:col-span-9">
+          <div class="card overflow-hidden">
+            <!-- Toolbar -->
+            <div class="flex items-center gap-3 px-6 py-4 border-b hairline">
+              <div class="flex items-center gap-1.5 text-[11.5px] mono">
+                <button @click="statusTab='all'" :class="statusTab==='all'?'text-[#0a1f44] bg-[#E6F7F4]':'text-slate-500 hover:bg-slate-50'" class="px-2.5 py-1 rounded-md transition">全部 <span x-text="totalCount"></span></button>
+                <button @click="statusTab='active'" :class="statusTab==='active'?'text-[#0a1f44] bg-[#E6F7F4]':'text-slate-500 hover:bg-slate-50'" class="px-2.5 py-1 rounded-md transition">已启用 <span x-text="activeCount"></span></button>
+                <button @click="statusTab='veto'" :class="statusTab==='veto'?'text-[#0a1f44] bg-[#E6F7F4]':'text-slate-500 hover:bg-slate-50'" class="px-2.5 py-1 rounded-md transition">一票否决 <span x-text="vetoCount"></span></button>
+                <button @click="statusTab='draft'" :class="statusTab==='draft'?'text-[#0a1f44] bg-[#E6F7F4]':'text-slate-500 hover:bg-slate-50'" class="px-2.5 py-1 rounded-md transition">草稿 <span x-text="draftCount"></span></button>
+              </div>
+              <div class="flex-1"></div>
+              <div class="relative">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="text" x-model="query" placeholder="过滤当前分类..." class="pl-9 pr-3 py-1.5 text-[12px] w-56 rounded-[10px] border hairline focus:outline-none focus:border-[#00A896] focus:ring-2 focus:ring-[#00A896]/15 placeholder-slate-400">
+              </div>
+              <button @click="openCreate()" class="text-[11.5px] text-[#00A896] hover:text-[#0a1f44] px-3 py-1.5 rounded-[8px] hover:bg-[#E6F7F4] flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                新增
+              </button>
+            </div>
+
+            <!-- Table -->
+            <div class="overflow-x-auto">
+            <table class="w-full text-[13px]">
+              <thead>
+                <tr class="text-[10.5px] mono uppercase tracking-wider text-slate-400 border-b hairline">
+                  <th class="text-left font-medium pl-6 pr-3 py-2.5 w-[36px]"><input type="checkbox" class="accent-[#00A896]"></th>
+                  <th class="text-left font-medium px-3 py-2.5 w-[110px]">Rule ID</th>
+                  <th class="text-left font-medium px-3 py-2.5">规则名称 · 触发条件</th>
+                  <th class="text-left font-medium px-3 py-2.5 w-[100px]">维度</th>
+                  <th class="text-right font-medium px-3 py-2.5 w-[90px]">权重 × 分</th>
+                  <th class="text-center font-medium px-3 py-2.5 w-[80px]">VETO</th>
+                  <th class="text-center font-medium px-3 py-2.5 w-[80px]">启用</th>
+                  <th class="text-left font-medium px-3 py-2.5 w-[120px]">最后更新</th>
+                  <th class="text-right font-medium pr-6 pl-3 py-2.5 w-[110px]">操作</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y hairline">
+                <template x-for="r in filteredRules" :key="r.id">
+                  <tr class="data-row transition cursor-pointer" :class="{'active':selected===r.id}" @click="openEdit(r.id)">
+                    <td class="pl-6 pr-3 py-3.5" @click.stop><input type="checkbox" class="accent-[#00A896]"></td>
+                    <td class="px-3 py-3.5">
+                      <div class="mono text-[12px]" :class="r.veto?'text-[#7f1d1d] font-semibold':'text-slate-500'" x-text="r.id"></div>
+                      <div class="mt-1"><span :class="r.status==='active'?'tag tag-active':'tag tag-draft'" x-text="r.status==='active'?'ACTIVE':'DRAFT'"></span></div>
+                    </td>
+                    <td class="px-3 py-3.5">
+                      <div class="font-medium text-[#0b1220] flex items-center gap-2">
+                        <span x-text="r.name"></span>
+                        <template x-if="r.veto"><span class="tag tag-veto">VETO</span></template>
+                      </div>
+                      <div class="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                        <template x-for="(cond,ci) in r.conditions" :key="ci">
+                          <span class="flex items-center gap-1">
+                            <span class="chip"><span x-text="cond.f"></span></span>
+                            <span class="chip chip-op" x-text="cond.op"></span>
+                            <span class="chip chip-val mono" x-text="cond.v"></span>
+                          </span>
+                        </template>
+                      </div>
+                    </td>
+                    <td class="px-3 py-3.5"><span class="tag tag-ghost" x-text="r.dim"></span></td>
+                    <td class="px-3 py-3.5 text-right">
+                      <div class="mono text-[12.5px] text-slate-600">×<span x-text="r.weight"></span></div>
+                      <div class="mono text-[11.5px] text-slate-400" x-text="'+'+r.base"></div>
+                    </td>
+                    <td class="px-3 py-3.5 text-center">
+                      <div class="switch mx-auto" :class="{'on':r.veto}" @click.stop="toggleVeto(r)" :style="r.veto?'background:#7f1d1d':''"></div>
+                    </td>
+                    <td class="px-3 py-3.5 text-center">
+                      <div class="switch mx-auto" :class="{'on':r.status==='active'}" @click.stop="toggleStatus(r)"></div>
+                    </td>
+                    <td class="px-3 py-3.5">
+                      <div class="mono text-[11.5px] text-slate-600" x-text="r.updated"></div>
+                      <div class="text-[10.5px] text-slate-400" x-text="'by '+r.by"></div>
+                    </td>
+                    <td class="pr-6 pl-3 py-3.5 text-right" @click.stop>
+                      <div class="inline-flex items-center gap-1">
+                        <button @click="openEdit(r.id)" class="text-[12px] font-medium text-[#0a1f44] hover:text-[#00A896] transition inline-flex items-center gap-1 px-1.5 py-1 rounded hover:bg-slate-50" title="编辑">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button @click="deleteRule(r.id)" class="text-[12px] text-slate-400 hover:text-red-600 transition inline-flex items-center px-1.5 py-1 rounded hover:bg-red-50" title="删除">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+                <template x-if="filteredRules.length===0">
+                  <tr><td colspan="9" class="text-center py-14 text-[13px] text-slate-400">
+                    <div class="mono text-[10.5px] uppercase tracking-widest mb-1">No rules matched</div>
+                    <div>当前筛选下没有规则，<button @click="query='';statusTab='all';active='all'" class="text-[#00A896] hover:underline">清除筛选</button> 或 <button @click="openCreate()" class="text-[#00A896] hover:underline">新增一条</button></div>
+                  </td></tr>
+                </template>
+              </tbody>
+            </table>
+            </div>
+            <!-- Pagination -->
+            <div class="px-6 py-3 border-t hairline flex items-center justify-between text-[11.5px] text-slate-500">
+              <span>显示 <span class="mono" x-text="filteredRules.length"></span> / <span class="mono" x-text="totalCount"></span> · 分类：<span class="text-slate-700" x-text="(categories.find(c=>c.key===active)||{label:'全部规则'}).label"></span></span>
+              <div class="flex items-center gap-1">
+                <button class="px-2 py-1 rounded hover:bg-slate-50">‹</button>
+                <span class="mono px-2">1 / 1</span>
+                <button class="px-2 py-1 rounded hover:bg-slate-50">›</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- footer -->
+      <div class="mt-10 flex items-center justify-between text-[11px] mono tracking-wider uppercase text-slate-400">
+        <span>RULE ENGINE · v2.0.3 · 34 RULES</span>
+        <span>DONGGUAN MSA · 东莞首靠船识别助手</span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ===== RIGHT DRAWER · Rule Editor ===== -->
+<div x-cloak x-show="drawerOpen"
+     x-transition:enter="palette-enter" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+     x-transition:leave="palette-enter" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+     @click.self="closeDrawer()"
+     class="fixed inset-0 z-[90]"
+     style="background:rgba(7,14,30,.45); backdrop-filter:blur(6px);">
+  <aside x-show="drawerOpen" @click.stop x-cloak
+         x-transition:enter="palette-enter" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+         x-transition:leave="palette-enter" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full"
+         class="absolute right-0 top-0 h-full w-[520px] bg-white shadow-2xl flex flex-col">
+    <template x-if="editingDraft">
+    <div class="flex flex-col h-full">
+    <!-- Header -->
+    <div class="px-6 py-5 border-b hairline flex items-center justify-between">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="mono text-[11px] text-slate-500 tracking-widest uppercase" x-text="drawerMode==='create'?'New · ':'Edit · '"></span>
+          <span class="mono text-[12px] font-medium text-[#0b1220]" x-text="editingDraft.id"></span>
+          <template x-if="editingDraft.veto"><span class="tag tag-veto">VETO</span></template>
+          <template x-if="drawerMode==='create'"><span class="tag tag-draft">CREATE</span></template>
+        </div>
+        <div class="mt-1 text-[17px] font-semibold tracking-tight" x-text="editingDraft.name||'未命名规则'"></div>
+      </div>
+      <div class="flex items-center gap-1">
+        <template x-if="drawerMode!=='create'">
+          <button @click="deleteRule(editingDraft.id)" class="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-600" title="删除规则">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </template>
+        <button @click="closeDrawer()" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-800">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Body (scroll) -->
+    <div class="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+      <!-- Basic -->
+      <section>
+        <div class="text-[10.5px] mono uppercase tracking-widest text-slate-400 mb-3">基本信息</div>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block">
+            <span class="text-[11.5px] text-slate-500">规则 ID</span>
+            <input type="text" class="field mt-1 w-full text-[13px] mono" x-model="editingDraft.id" :readonly="drawerMode!=='create'" :class="drawerMode!=='create'?'bg-slate-50 text-slate-500':''">
+          </label>
+          <label class="block">
+            <span class="text-[11.5px] text-slate-500">维度</span>
+            <select class="field mt-1 w-full text-[13px]" x-model="editingDraft.dim" @change="onDimChange()">
+              <option>PSC</option><option>配员</option><option>证书</option><option>船龄</option><option>货种</option><option>船籍</option><option>船东</option><option>航线</option><option>AIS</option><option>报告</option>
+            </select>
+          </label>
+          <label class="block col-span-2">
+            <span class="text-[11.5px] text-slate-500">规则名称</span>
+            <input type="text" class="field mt-1 w-full text-[13px]" x-model="editingDraft.name" placeholder="例：船龄超阈值（15 年）">
+          </label>
+          <label class="block col-span-2">
+            <span class="text-[11.5px] text-slate-500">规则描述</span>
+            <textarea rows="2" class="field mt-1 w-full text-[13px] resize-none" x-model="editingDraft.desc" placeholder="一句话说明本规则要拦截的风险场景..."></textarea>
+          </label>
+        </div>
+      </section>
+
+      <!-- Trigger Conditions -->
+      <section>
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-[10.5px] mono uppercase tracking-widest text-slate-400">触发条件 · Trigger</div>
+          <div class="flex items-center gap-2 text-[11px]">
+            <span class="text-slate-500">组合</span>
+            <div class="flex items-center rounded-md border hairline p-0.5 mono">
+              <button class="px-2 py-0.5 rounded-sm text-white" style="background:#0a1f44;">AND</button>
+              <button class="px-2 py-0.5 text-slate-500">OR</button>
+            </div>
+          </div>
+        </div>
+        <div class="space-y-2">
+          <template x-for="(cond,i) in editingDraft.conditions" :key="i">
+            <div class="rounded-[12px] border hairline p-3 bg-slate-50/60">
+              <div class="grid grid-cols-[1fr_90px_1fr_auto] gap-2 items-center">
+                <input type="text" class="field text-[12.5px] mono" x-model="cond.f" placeholder="字段，如 vessel.age_years" list="rule-fields">
+                <select class="field text-[12px] mono text-center" x-model="cond.op">
+                  <option>=</option><option>!=</option><option>&gt;</option><option>&lt;</option><option>&gt;=</option><option>&lt;=</option><option>IN</option>
+                </select>
+                <input type="text" class="field text-[12.5px] mono" x-model="cond.v" placeholder="值，如 15 或 [PaC,PaO]">
+                <button @click="removeCondition(i)" class="w-8 h-8 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 flex items-center justify-center" title="删除条件">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </div>
+            </div>
+          </template>
+          <datalist id="rule-fields">
+            <option value="PSC.detention_count_3y"/>
+            <option value="PSC.open_deficiencies"/>
+            <option value="crew.compliance_rate"/>
+            <option value="crew.missing_rank"/>
+            <option value="crew.non_english_ratio"/>
+            <option value="vessel.age_years"/>
+            <option value="vessel.flag_state"/>
+            <option value="cert.days_to_expire"/>
+            <option value="AIS.appearance_6m"/>
+            <option value="cargo.imdg_class"/>
+            <option value="cargo.un_code"/>
+            <option value="report.hours_before_eta"/>
+          </datalist>
+          <button @click="addCondition()" class="w-full py-2.5 rounded-[12px] border-2 border-dashed border-slate-200 text-[12px] text-slate-500 hover:text-[#00A896] hover:border-[#00A896] transition flex items-center justify-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            添加条件
+          </button>
+        </div>
+      </section>
+
+      <!-- Scoring -->
+      <section>
+        <div class="text-[10.5px] mono uppercase tracking-widest text-slate-400 mb-3">评分设置 · Scoring</div>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block">
+            <span class="text-[11.5px] text-slate-500">基础分</span>
+            <input type="number" class="field mt-1 w-full text-[13px] mono" x-model.number="editingDraft.base">
+          </label>
+          <label class="block">
+            <span class="text-[11.5px] text-slate-500">权重倍数</span>
+            <input type="number" step="0.1" class="field mt-1 w-full text-[13px] mono" x-model.number="editingDraft.weight">
+          </label>
+          <div class="col-span-2 rounded-[12px] border hairline bg-slate-50/60 p-3 flex items-center justify-between">
+            <div>
+              <div class="text-[11.5px] text-slate-500 mono uppercase tracking-widest">最终得分预览</div>
+              <div class="mt-1 mono text-[13px] text-slate-500"><span x-text="editingDraft.base"></span> × <span x-text="editingDraft.weight"></span> = <span class="text-[#0b1220] font-semibold text-[16px] ml-1" x-text="((Number(editingDraft.base)||0)*(Number(editingDraft.weight)||0)).toFixed(1)"></span></div>
+            </div>
+            <div class="text-[10.5px] mono text-slate-400 uppercase tracking-widest text-right">
+              阈值参考<br/>低 &lt;20 · 中 20-50 · 高 ≥50
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Flags -->
+      <section>
+        <div class="text-[10.5px] mono uppercase tracking-widest text-slate-400 mb-3">开关与范围 · Flags</div>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between p-3 rounded-[12px] border hairline">
+            <div>
+              <div class="text-[13px] font-medium">启用规则</div>
+              <div class="text-[11.5px] text-slate-500 mt-0.5">关闭后不参与实时匹配，但保留在规则库</div>
+            </div>
+            <div class="switch" :class="{'on':editingDraft.status==='active'}" @click="editingDraft.status = editingDraft.status==='active'?'draft':'active'"></div>
+          </div>
+          <div class="flex items-center justify-between p-3 rounded-[12px] border" :class="editingDraft.veto?'border-[#7f1d1d] bg-red-50/60':'hairline'">
+            <div>
+              <div class="text-[13px] font-medium flex items-center gap-1.5">
+                一票否决
+                <template x-if="editingDraft.veto"><span class="tag tag-veto">VETO</span></template>
+              </div>
+              <div class="text-[11.5px] text-slate-500 mt-0.5">命中即登顶风险等级，需审计日志与双人复核</div>
+            </div>
+            <div class="switch" :class="{'on':editingDraft.veto}" @click="editingDraft.veto=!editingDraft.veto" :style="editingDraft.veto?'background:#7f1d1d':''"></div>
+          </div>
+          <label class="block">
+            <span class="text-[11.5px] text-slate-500">适用船型</span>
+            <div class="field mt-1 flex items-center gap-1.5 flex-wrap">
+              <span class="tag tag-ghost">集装箱船</span>
+              <span class="tag tag-ghost">油轮</span>
+              <span class="tag tag-ghost">化学品船</span>
+              <span class="tag tag-ghost">LNG/LPG</span>
+              <button class="text-[11px] text-[#00A896] hover:underline ml-1">+ 全部</button>
+            </div>
+          </label>
+        </div>
+      </section>
+
+      <!-- Audit -->
+      <section x-show="editingDraft.logs && editingDraft.logs.length">
+        <div class="text-[10.5px] mono uppercase tracking-widest text-slate-400 mb-3">审计 · Audit Log</div>
+        <div class="space-y-2.5">
+          <template x-for="log in editingDraft.logs" :key="log.t+log.text">
+            <div class="flex items-start gap-3">
+              <div class="w-1.5 h-1.5 rounded-full mt-2" :style="`background:${log.color};`"></div>
+              <div class="flex-1 min-w-0">
+                <div class="text-[12px] text-slate-700" x-text="log.text"></div>
+                <div class="text-[10.5px] mono text-slate-400 mt-0.5 tracking-wider" x-text="log.t+' · '+log.by"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </section>
+    </div>
+
+    <!-- Footer -->
+    <div class="px-6 py-4 border-t hairline flex items-center justify-between bg-slate-50/60">
+      <button class="text-[12px] text-slate-500 hover:text-slate-800 flex items-center gap-1.5" @click="showToast('试算功能演示版暂未接入历史回放')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        试算 · 用历史数据回放
+      </button>
+      <div class="flex items-center gap-2">
+        <button @click="closeDrawer()" class="btn-ghost px-4 py-2 rounded-[10px] text-[12px]">取消</button>
+        <button @click="saveDraft()" class="btn-primary px-4 py-2 rounded-[10px] text-[12px] font-medium flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          保存为草稿
+        </button>
+        <button @click="saveAndPublish()" class="btn-accent px-4 py-2 rounded-[10px] text-[12px] font-medium">保存并启用</button>
+      </div>
+    </div>
+    </div>
+    </template>
+  </aside>
+</div>
+
+<!-- Toast -->
+<div x-cloak x-show="toast.show"
+     x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
+     x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+     class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] px-4 py-2.5 rounded-full bg-[#0a1f44] text-white text-[12.5px] shadow-2xl flex items-center gap-2">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+  <span x-text="toast.text"></span>
+</div>
+
+<!-- Reuse Command Palette minimal -->
+<div x-cloak x-show="cmdkOpen" @click.self="cmdkOpen=false"
+     x-transition.opacity
+     class="fixed inset-0 z-[100] flex items-start justify-center pt-[14vh] px-4"
+     style="background:rgba(7,14,30,.55); backdrop-filter:blur(10px);">
+  <div @click.stop class="w-full max-w-[600px] rounded-[18px] bg-white shadow-2xl border hairline overflow-hidden">
+    <div class="flex items-center gap-3 px-5 py-4 border-b hairline">
+      <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:#E6F7F4;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00A896" stroke-width="1.8"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M8 13h.01M16 13h.01M9 17h6"/></svg>
+      </div>
+      <input x-ref="cmdkInput" type="text" placeholder="问 Nanobot：近三个月命中最多的规则是哪条？" class="flex-1 bg-transparent text-[14.5px] placeholder-slate-400 focus:outline-none text-slate-800">
+      <kbd class="px-1.5 py-1 rounded bg-slate-100 border hairline text-slate-500">ESC</kbd>
+    </div>
+    <div class="px-5 py-10 text-center text-[12px] text-slate-400">按 ↑↓ 浏览 · Enter 提问</div>
+    <div class="px-5 pb-4 flex flex-wrap gap-2 justify-center">
+      <button data-nb-ask="近三个月命中最多的规则是哪条？" class="px-3 py-1.5 rounded-full text-[11.5px] bg-slate-50 hover:bg-[#E6F7F4] hover:text-[#0a1f44] text-slate-600 border hairline transition">近 3 月命中最多的规则</button>
+      <button data-nb-ask="规则库里哪些规则是一票否决？" class="px-3 py-1.5 rounded-full text-[11.5px] bg-slate-50 hover:bg-[#E6F7F4] hover:text-[#0a1f44] text-slate-600 border hairline transition">一票否决规则有哪些</button>
+      <button data-nb-ask="如何新增一条 PSC 规则？" class="px-3 py-1.5 rounded-full text-[11.5px] bg-slate-50 hover:bg-[#E6F7F4] hover:text-[#0a1f44] text-slate-600 border hairline transition">如何新增 PSC 规则</button>
+    </div>
+    <div class="px-5 py-2.5 border-t hairline flex items-center justify-between text-[10.5px] mono text-slate-500" style="background:#fafbfc;">
+      <span class="tracking-wider uppercase">Nanobot · LLM Online</span>
+      <span class="tracking-wider uppercase">v2.0.3</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== Rule Storage Layer =====
+const RULES_KEY = 'dgmsa_rules_v1';
+function loadRules(defaults){
+  try{
+    const raw = localStorage.getItem(RULES_KEY);
+    if(!raw) return JSON.parse(JSON.stringify(defaults));
+    const parsed = JSON.parse(raw);
+    if(!Array.isArray(parsed) || parsed.length===0) return JSON.parse(JSON.stringify(defaults));
+    return parsed;
+  }catch(e){ return JSON.parse(JSON.stringify(defaults)); }
+}
+function persistRules(rules){
+  try{ localStorage.setItem(RULES_KEY, JSON.stringify(rules)); }catch(e){}
+}
+function dimToCat(dim){
+  const map = {'PSC':'psc','配员':'crew','证书':'crew','船龄':'age','货种':'cargo','船籍':'flag','船东':'flag','航线':'ais','AIS':'ais','报告':'report'};
+  return map[dim] || 'crew';
+}
+function nowStamp(){
+  const d=new Date(), p=(n)=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function currentUserName(){
+  try{
+    const u = (typeof window.dgmsaCurrentUser==='function') ? window.dgmsaCurrentUser() : null;
+    return (u && u.name) ? u.name : 'admin';
+  }catch(e){ return 'admin'; }
+}
+function nextRuleId(rules, dim){
+  const prefix = ({'PSC':'R-PSC','配员':'R-CREW','证书':'R-CERT','船龄':'R-AGE','货种':'R-CARGO','船籍':'R-FLAG','船东':'R-FLAG','航线':'R-ROUTE','AIS':'R-AIS','报告':'R-MSA'})[dim] || 'R-NEW';
+  let max=0;
+  rules.forEach(r=>{ const m=String(r.id||'').match(new RegExp('^'+prefix+'-(\\d+)$')); if(m){ const n=parseInt(m[1],10); if(n>max) max=n; } });
+  return `${prefix}-${String(max+1).padStart(3,'0')}`;
+}
+
+function rulesApp(){
+  return {
+    cmdkOpen:false,
+    drawerOpen:false,
+    drawerMode:'view',          // 'view' | 'create'
+    query:'',
+    statusTab:'all',            // 'all' | 'active' | 'veto' | 'draft'
+    active:'all',
+    selected:'R-CREW-001',
+    editingDraft:null,
+    toast:{show:false,text:''},
+    currentUser:'admin',
+    currentUserInitial:'A',
+    currentUserDept:'东莞海事局',
+    nav:[
+      {id:'home',label:'指挥台',active:false,href:'index.html',icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12 12 3l9 9"/><path d="M5 10v11h14V10"/></svg>'},
+      {id:'query',label:'风险查询',active:false,href:'risk-report.html',icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>'},
+      {id:'daily',label:'日报看板',active:false,href:'daily-dashboard.html',icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M8 5v14"/></svg>'},
+      {id:'rules',label:'规则库',active:true,icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16v4H4zM4 12h16v4H4zM4 20h10"/></svg>'},
+      {id:'bot',label:'Nanobot',active:false,icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M8 13h.01M16 13h.01M9 17h6"/></svg>'},
+      {id:'arch',label:'归档库',active:false,href:'plan-history.html',icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="5" rx="1"/><path d="M5 8v12h14V8M10 12h4"/></svg>'},
+    ],
+    categories:[
+      {key:'all',label:'全部规则',count:34,color:'#0a1f44', icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>'},
+      {key:'psc',label:'PSC · 港口国监督',count:8,color:'#DC2626', icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>'},
+      {key:'crew',label:'配员 / 证书',count:6,color:'#7f1d1d', icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="7" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg>'},
+      {key:'age',label:'船龄 / 技术',count:5,color:'#D97706', icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v8M4 14l8-4 8 4M4 14v6h16v-6"/></svg>'},
+      {key:'flag',label:'船籍 / 船东',count:4,color:'#00A896', icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 21V5a2 2 0 0 1 2-2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>'},
+      {key:'cargo',label:'货种 / 航线',count:6,color:'#4338CA', icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>'},
+      {key:'ais',label:'AIS · 航迹异常',count:3,color:'#0891B2', icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12a10 10 0 0 1 20 0"/><path d="M5 12a7 7 0 0 1 14 0"/><circle cx="12" cy="12" r="2"/></svg>'},
+      {key:'report',label:'报告 · 合规',count:1,color:'#C2410C', icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'},
+      {key:'draft',label:'草稿 · 未启用',count:5,color:'#64748b', icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>'},
+    ],
+    rules:[],
+    defaultRules:[
+      {id:'R-CREW-001',name:'配员符合率低于基线',dim:'配员',base:15,weight:1.2,veto:true,status:'active',cat:'crew',updated:'2026-05-10 13:42',by:'吴思远',
+        desc:'当船舶在辖区 MMSI/IMO 任一字段近 6 个月未出现，且配员关键岗位缺失或配员符合率低于行业基线时，触发风险评分。',
+        conditions:[{f:'crew.compliance_rate',op:'<',v:'85%'},{f:'crew.missing_rank',op:'IN',v:'[大副,轮机长]'}],
+        logs:[
+          {t:'2026-05-10 13:42',by:'吴思远',color:'#00A896',text:'权重从 1.0 上调至 1.2，接入最新配员实时数据'},
+          {t:'2026-04-28 09:14',by:'李建军',color:'#94a3b8',text:'修订条件：新增 missing_rank 字段'},
+          {t:'2026-03-15 10:02',by:'系统',color:'#64748b',text:'规则创建'},
+        ]},
+      {id:'R-PSC-003',name:'近 3 年 PSC 滞留',dim:'PSC',base:10,weight:1.0,veto:false,status:'active',cat:'psc',updated:'2026-05-08 11:20',by:'吴思远',
+        conditions:[{f:'PSC.detention_count_3y',op:'>=',v:'1'}],logs:[{t:'2026-05-08 11:20',by:'吴思远',color:'#00A896',text:'同步 PSC 数据源'}]},
+      {id:'R-PSC-007',name:'PSC 缺陷项未整改',dim:'PSC',base:8,weight:0.9,veto:false,status:'active',cat:'psc',updated:'2026-05-08 11:18',by:'吴思远',
+        conditions:[{f:'PSC.open_deficiencies',op:'>',v:'0'}],logs:[{t:'2026-05-08 11:18',by:'吴思远',color:'#00A896',text:'创建'}]},
+      {id:'R-AGE-002',name:'船龄超阈值（15 年）',dim:'船龄',base:12,weight:0.8,veto:false,status:'active',cat:'age',updated:'2026-05-02 15:30',by:'李建军',
+        conditions:[{f:'vessel.age_years',op:'>=',v:'15'}],logs:[{t:'2026-05-02 15:30',by:'李建军',color:'#94a3b8',text:'阈值从 20 下调至 15'}]},
+      {id:'R-CERT-004',name:'船员证书 90 天内到期',dim:'证书',base:8,weight:0.6,veto:false,status:'active',cat:'crew',updated:'2026-04-30 14:10',by:'吴思远',
+        conditions:[{f:'cert.days_to_expire',op:'<',v:'90'}],logs:[{t:'2026-04-30 14:10',by:'吴思远',color:'#00A896',text:'创建'}]},
+      {id:'R-CREW-009',name:'船员非英语国籍占比',dim:'配员',base:6,weight:0.5,veto:false,status:'draft',cat:'crew',updated:'2026-05-11 09:30',by:'吴思远',
+        conditions:[{f:'crew.non_english_ratio',op:'>',v:'60%'}],logs:[{t:'2026-05-11 09:30',by:'吴思远',color:'#64748b',text:'草稿新建，等审阅'}]},
+      {id:'R-ROUTE-001',name:'首次航线 · 无历史轨迹',dim:'航线',base:5,weight:0.5,veto:false,status:'active',cat:'ais',updated:'2026-04-22 16:45',by:'系统',
+        conditions:[{f:'AIS.appearance_6m',op:'=',v:'0'}],logs:[{t:'2026-04-22 16:45',by:'系统',color:'#64748b',text:'规则创建'}]},
+      {id:'R-CARGO-002',name:'高危混装声明',dim:'货种',base:6,weight:0.5,veto:false,status:'active',cat:'cargo',updated:'2026-05-01 11:00',by:'吴思远',
+        conditions:[{f:'cargo.imdg_class',op:'IN',v:'[1,2,3]'}],logs:[{t:'2026-05-01 11:00',by:'吴思远',color:'#00A896',text:'初始发布'}]},
+      {id:'R-CARGO-009',name:'锂电池混装强化',dim:'货种',base:8,weight:1.0,veto:true,status:'active',cat:'cargo',updated:'2026-05-12 13:42',by:'吴思远',
+        conditions:[{f:'cargo.un_code',op:'IN',v:'[UN3480,UN3481]'}],logs:[
+          {t:'2026-05-12 13:42',by:'吴思远',color:'#DC2626',text:'提升为一票否决（近期 3 起锂电池火灾事故后）'},
+        ]},
+      {id:'R-MSA-2603',name:'DG-MSA-2603 提前 24h 报告违规',dim:'报告',base:12,weight:1.0,veto:false,status:'active',cat:'report',updated:'2026-05-26 10:00',by:'系统',
+        desc:'船舶应在预计到达港口 24 小时前向海事管理机构报告进出港信息。未按时报告的船舶触发风险评分，多次违规升级为高风险。',
+        conditions:[{f:'report.hours_before_eta',op:'<',v:'24'}],logs:[
+          {t:'2026-05-26 10:00',by:'系统',color:'#00A896',text:'依据《船舶进出港报告管理办法》创建，报告时限 24h'},
+        ]},
+      {id:'R-FLAG-005',name:'高风险船旗国',dim:'船籍',base:10,weight:1.0,veto:false,status:'draft',cat:'flag',updated:'2026-05-09 10:00',by:'李建军',
+        conditions:[{f:'vessel.flag_state',op:'IN',v:'[PaC,PaO]'}],logs:[{t:'2026-05-09 10:00',by:'李建军',color:'#64748b',text:'国内船舶暂不启用'}]},
+    ],
+    get filteredRules(){
+      let arr = this.rules;
+      // 状态切换条
+      if(this.statusTab==='active') arr = arr.filter(r=>r.status==='active');
+      else if(this.statusTab==='draft') arr = arr.filter(r=>r.status==='draft');
+      else if(this.statusTab==='veto') arr = arr.filter(r=>r.veto);
+      // 左侧分类
+      if(this.active!=='all'){
+        if(this.active==='draft') arr = arr.filter(r=>r.status==='draft');
+        else arr = arr.filter(r=>r.cat===this.active);
+      }
+      // 右上搜索
+      const q = (this.query||'').trim().toLowerCase();
+      if(q) arr = arr.filter(r => (r.id+' '+r.name+' '+r.dim).toLowerCase().includes(q));
+      return arr;
+    },
+    get totalCount(){ return this.rules.length; },
+    get activeCount(){ return this.rules.filter(r=>r.status==='active').length; },
+    get draftCount(){ return this.rules.filter(r=>r.status==='draft').length; },
+    get vetoCount(){ return this.rules.filter(r=>r.veto).length; },
+    countByCat(key){
+      if(key==='all') return this.totalCount;
+      if(key==='draft') return this.draftCount;
+      return this.rules.filter(r=>r.cat===key).length;
+    },
+    persist(){ persistRules(this.rules); },
+    showToast(text){
+      this.toast.text = text; this.toast.show = true;
+      clearTimeout(this._toastT);
+      this._toastT = setTimeout(()=>{ this.toast.show=false; }, 2200);
+    },
+    // ----- Drawer -----
+    openEdit(id){
+      const r = this.rules.find(x=>x.id===id);
+      if(!r) return;
+      this.selected = id;
+      this.drawerMode = 'view';
+      this.editingDraft = JSON.parse(JSON.stringify(r));
+      this.drawerOpen = true;
+    },
+    openCreate(){
+      this.selected = null;
+      this.drawerMode = 'create';
+      this.editingDraft = {
+        id: nextRuleId(this.rules,'PSC'),
+        name:'新规则',
+        dim:'PSC', cat:'psc',
+        base:5, weight:1.0,
+        veto:false, status:'draft',
+        desc:'',
+        conditions:[{f:'PSC.detention_count_3y',op:'>=',v:'1'}],
+        logs:[{t:nowStamp(), by:currentUserName(), color:'#64748b', text:'草稿创建'}],
+        updated: nowStamp(), by: currentUserName(),
+      };
+      this.drawerOpen = true;
+    },
+    closeDrawer(){ this.drawerOpen=false; this.editingDraft=null; this.drawerMode='view'; },
+    onDimChange(){
+      if(!this.editingDraft) return;
+      const newCat = dimToCat(this.editingDraft.dim);
+      this.editingDraft.cat = newCat;
+      // 新建时同步刷新 ID 前缀（避免 R-NEW-xxx 残留）
+      if(this.drawerMode==='create'){
+        this.editingDraft.id = nextRuleId(this.rules, this.editingDraft.dim);
+      }
+    },
+    addCondition(){
+      if(!this.editingDraft) return;
+      this.editingDraft.conditions.push({f:'vessel.age_years',op:'>=',v:''});
+    },
+    removeCondition(i){
+      if(!this.editingDraft) return;
+      if(this.editingDraft.conditions.length<=1){ this.showToast('至少保留一个条件'); return; }
+      this.editingDraft.conditions.splice(i,1);
+    },
+    saveDraft(){
+      if(!this.editingDraft) return;
+      this._commitDraft('draft','保存为草稿');
+    },
+    saveAndPublish(){
+      if(!this.editingDraft) return;
+      this._commitDraft('active','保存并启用');
+    },
+    _commitDraft(status, action){
+      const d = this.editingDraft;
+      if(!d.name || !String(d.name).trim()){ this.showToast('规则名称必填'); return; }
+      if(!d.conditions || d.conditions.length===0){ this.showToast('至少一个触发条件'); return; }
+      d.status = status;
+      d.cat = dimToCat(d.dim);
+      d.base = Number(d.base)||0;
+      d.weight = Number(d.weight)||0;
+      d.updated = nowStamp();
+      d.by = currentUserName();
+      d.logs = d.logs || [];
+      d.logs.unshift({t:d.updated, by:d.by, color: status==='active'?'#00A896':'#64748b', text:action+(status==='active'?' · 已启用':' · 草稿')});
+      if(this.drawerMode==='create'){
+        // 防 ID 冲突
+        if(this.rules.some(r=>r.id===d.id)) d.id = nextRuleId(this.rules, d.dim);
+        this.rules.unshift(JSON.parse(JSON.stringify(d)));
+        this.selected = d.id;
+        this.showToast(`新规则 ${d.id} ${action}`);
+      } else {
+        const idx = this.rules.findIndex(r=>r.id===this.selected);
+        if(idx>=0){ this.rules[idx] = JSON.parse(JSON.stringify(d)); this.showToast(`${d.id} ${action}`); }
+      }
+      this.persist();
+      this.drawerMode='view';
+      this.editingDraft = JSON.parse(JSON.stringify(this.rules.find(r=>r.id===this.selected)));
+    },
+    deleteRule(id){
+      const r = this.rules.find(x=>x.id===id);
+      if(!r) return;
+      if(!confirm(`确认删除规则【${r.id} · ${r.name}】？\n该操作仅作用于本地数据，可通过"恢复默认"找回。`)) return;
+      this.rules = this.rules.filter(x=>x.id!==id);
+      this.persist();
+      if(this.selected===id) this.closeDrawer();
+      this.showToast(`已删除 ${id}`);
+    },
+    toggleVeto(r){ r.veto = !r.veto; this.persist(); },
+    toggleStatus(r){ r.status = r.status==='active' ? 'draft' : 'active'; this.persist(); },
+    // ----- Import / Export -----
+    exportJSON(){
+      const blob = new Blob([JSON.stringify(this.rules,null,2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `dgmsa-rules-${nowStamp().replace(/[: ]/g,'-')}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 800);
+      this.showToast(`已导出 ${this.rules.length} 条规则`);
+    },
+    triggerImport(){ this.$refs.importFile && this.$refs.importFile.click(); },
+    async importJSON(ev){
+      const f = ev.target.files && ev.target.files[0];
+      if(!f) return;
+      try{
+        const text = await f.text();
+        const arr = JSON.parse(text);
+        if(!Array.isArray(arr)) throw new Error('JSON 顶层必须是数组');
+        // 简单校验
+        const valid = arr.filter(x=>x && x.id && x.name && Array.isArray(x.conditions));
+        if(valid.length===0) throw new Error('未识别到合法规则');
+        if(!confirm(`将导入 ${valid.length} 条规则并合并（同 ID 覆盖），是否继续？`)){ ev.target.value=''; return; }
+        const map = {};
+        this.rules.forEach(r=>map[r.id]=r);
+        valid.forEach(r=>{ r.cat = r.cat || dimToCat(r.dim); map[r.id]=r; });
+        this.rules = Object.values(map);
+        this.persist();
+        this.showToast(`导入完成：合并 ${valid.length} 条`);
+      }catch(e){
+        alert('导入失败：'+(e.message||e));
+      }finally{
+        ev.target.value='';
+      }
+    },
+    resetDefaults(){
+      if(!confirm('确认恢复为系统默认规则？\n您当前的本地修改将被清除。')) return;
+      this.rules = JSON.parse(JSON.stringify(this.defaultRules));
+      this.persist();
+      this.selected = this.rules[0] && this.rules[0].id;
+      this.closeDrawer();
+      this.showToast('已恢复默认规则');
+    },
+    init(){
+      this.rules = loadRules(this.defaultRules);
+      if(!this.rules.find(r=>r.id===this.selected)) this.selected = this.rules[0] && this.rules[0].id;
+      // 加载当前登录用户信息
+      try {
+        var u = (typeof window.dgmsaCurrentUser === 'function') ? window.dgmsaCurrentUser() : null;
+        if(u && u.name){
+          this.currentUser = u.name;
+          this.currentUserInitial = u.name.charAt(0).toUpperCase();
+          this.currentUserDept = (u.role || '执法人员') + (u.dept ? ' · ' + u.dept : '');
+        }
+      } catch(e){}
+      window.addEventListener('keydown',(e)=>{
+        const k=(e.key||'').toLowerCase();
+        if((e.metaKey||e.ctrlKey) && k==='k'){ e.preventDefault(); this.cmdkOpen=!this.cmdkOpen; }
+        else if(k==='escape'){ this.cmdkOpen=false; this.drawerOpen=false; }
+      });
+      this.$watch && this.$watch('cmdkOpen',v=>{ if(v){this.$nextTick(()=>this.$refs.cmdkInput&&this.$refs.cmdkInput.focus());}});
+      // ===== Nanobot 嵌入 =====
+      const self=this;
+      const bindNb=()=>{
+        if(!window.NanobotChat) return setTimeout(bindNb,80);
+        NanobotChat.setContext(`你是「东莞首靠船识别助手 · Nanobot」，当前页面：规则库管理。\n用户是规则维护管理员，可以协助回答规则编辑、阈值调整、规则命中统计、一票否决规则维护等问题。\n规则总数 ${self.totalCount}，启用 ${self.activeCount}，草稿 ${self.draftCount}，一票否决 ${self.vetoCount}。\n回答风格：精确、引用规则 ID（如 R-CREW-001）、给出规则修订建议。`);
+        NanobotChat.bindPalette({
+          input:'[x-ref="cmdkInput"]',
+          suggestions:'[data-nb-ask]',
+          closePalette:()=>{ self.cmdkOpen=false; }
+        });
+      };
+      bindNb();
+    }
+  };
+}
+</script>
+</body>
+</html>

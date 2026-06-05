@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Nanobot runtime
+nanobot-main/nanobot/__pycache__/
+nanobot-main/nanobot/*/__pycache__/
+nanobot-main/nanobot/*/*/__pycache__/
+
+# Node / webui
+nanobot-main/webui/node_modules/
+nanobot-main/bridge/node_modules/
+
+# 运行时生成的临时文件
+*.log
+.pids
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# 上传的 Excel 数据文件（不入库）
+uploads/
+data/*.json
+
+# IDE / 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Nanobot 配置（含敏感 API Key）
+nanobot-config-local/
+nanobot.yaml

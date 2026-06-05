@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>东莞首靠船识别助手 · 大屏看板</title>
+<script src="auth-guard.js"></script>
+<script src="ship-data.js"></script>
+<script src="plan-store.js"></script>
+<script src="rule-engine.js"></script>
+<script src="data-sources.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+<script defer src="nanobot-chat.js?v=3"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#050b1f; --panel:#0a1530; --panel-2:#0e1a3d; --line:rgba(0,168,150,.15); --line-soft:rgba(255,255,255,.06);
+    --accent:#00a896; --accent-glow:rgba(0,168,150,.4);
+    --risk-low:#10b981; --risk-mid:#f59e0b; --risk-high:#ef4444; --risk-veto:#7f1d1d;
+    --text:#e2e8f0; --text-dim:#94a3b8; --text-mute:#64748b;
+  }
+  html,body{background:var(--bg); color:var(--text); font-family:"Geist","HarmonyOS Sans SC","PingFang SC",sans-serif; -webkit-font-smoothing:antialiased; overflow:hidden;}
+  .mono{font-family:"Geist Mono",ui-monospace,monospace; font-feature-settings:"tnum";}
+  .panel{background:linear-gradient(180deg,rgba(10,21,48,.92) 0%, rgba(10,21,48,.7) 100%); border:1px solid var(--line); border-radius:12px; position:relative;}
+  .panel::before{content:""; position:absolute; inset:0; border-radius:12px; pointer-events:none; background:
+      linear-gradient(180deg,rgba(0,168,150,.08) 0%, transparent 40%);}
+  .panel-title{display:flex; align-items:center; gap:8px; font-size:13px; color:#cbd5e1; letter-spacing:.04em;}
+  .panel-title::before{content:""; width:3px; height:14px; background:var(--accent); border-radius:2px; box-shadow:0 0 8px var(--accent-glow);}
+  .panel-title .suffix{margin-left:auto; font-family:"Geist Mono",monospace; font-size:10.5px; color:var(--text-mute); letter-spacing:.15em; text-transform:uppercase;}
+  .glow{text-shadow:0 0 14px var(--accent-glow);}
+  .glow-red{text-shadow:0 0 14px rgba(239,68,68,.45);}
+  .grid-bg{position:fixed; inset:0; z-index:-1; opacity:.35;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(0,168,150,.08), transparent 60%),
+      radial-gradient(800px 500px at 10% 110%, rgba(239,68,68,.06), transparent 60%),
+      linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px) 0 0 / 48px 48px,
+      linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px) 0 0 / 48px 48px,
+      var(--bg);
+  }
+  /* tag */
+  .tag{display:inline-flex; align-items:center; gap:4px; font-size:10.5px; padding:2px 8px; border-radius:4px; font-family:"Geist Mono",monospace; letter-spacing:.08em; text-transform:uppercase;}
+  .tag-high{background:rgba(239,68,68,.14); color:#fca5a5; border:1px solid rgba(239,68,68,.3);}
+  .tag-mid{background:rgba(245,158,11,.14); color:#fcd34d; border:1px solid rgba(245,158,11,.3);}
+  .tag-low{background:rgba(16,185,129,.14); color:#6ee7b7; border:1px solid rgba(16,185,129,.3);}
+  .tag-veto{background:#450a0a; color:#fecaca; border:1px solid #7f1d1d;}
+  /* Ticker */
+  @keyframes scrollUp{ from{transform:translateY(0);} to{transform:translateY(-50%);} }
+  .ticker{animation:scrollUp 80s linear infinite;}
+  .ticker:hover{animation-play-state:paused;}
+  /* Pulse dot */
+  @keyframes pulse{0%,100%{transform:scale(1);opacity:.95;} 50%{transform:scale(1.5);opacity:.4;}}
+  .pulse-dot::before{content:""; position:absolute; inset:-6px; border-radius:9999px; background:currentColor; animation:pulse 2.2s ease-in-out infinite; opacity:.35;}
+  /* stagger */
+  [data-stagger]{opacity:0; transform:translateY(10px); animation:riseIn .7s cubic-bezier(.16,1,.3,1) forwards;}
+  @keyframes riseIn{to{opacity:1;transform:translateY(0);}}
+  /* corner accent */
+  .corner::before,.corner::after{content:""; position:absolute; width:14px;height:14px; border:1.5px solid var(--accent); pointer-events:none;}
+  .corner::before{top:-1px; left:-1px; border-right:none; border-bottom:none; border-top-left-radius:12px;}
+  .corner::after{bottom:-1px; right:-1px; border-left:none; border-top:none; border-bottom-right-radius:12px;}
+  /* Scanline sweep */
+  @keyframes sweep{0%{transform:translateX(-100%);} 100%{transform:translateX(100%);}}
+  .scan::before{content:""; position:absolute; inset:0; border-radius:12px; overflow:hidden; pointer-events:none;
+    background:linear-gradient(90deg, transparent 0%, rgba(0,168,150,.12) 50%, transparent 100%); animation:sweep 8s ease-in-out infinite;}
+  /* VETO banner pulse */
+  @keyframes vpulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.5);} 50%{box-shadow:0 0 0 10px rgba(239,68,68,0);}}
+  .veto-pulse{animation:vpulse 2s ease-in-out infinite;}
+  /* HUD frame */
+  .hud{border:1px solid rgba(0,168,150,.3); background:rgba(0,168,150,.04); border-radius:4px;}
+  ::-webkit-scrollbar{width:0;height:0;}
+</style>
+</head>
+<body x-data="dashboardApp()" x-init="init()" class="h-[100dvh] min-h-[100dvh] w-full overflow-hidden">
+<div class="grid-bg"></div>
+
+<div class="h-full w-full flex flex-col p-5 gap-4" style="min-height:100dvh;">
+
+  <!-- ============ HEADER ============ -->
+  <header data-stagger class="relative panel corner scan overflow-hidden" style="height:78px;">
+    <div class="h-full px-7 flex items-center gap-8 relative z-10">
+      <!-- Logo -->
+      <div class="flex items-center gap-3 shrink-0">
+        <svg width="38" height="38" viewBox="0 0 32 32" fill="none">
+          <rect x="2" y="2" width="28" height="28" rx="6" stroke="#00A896" stroke-width="1.5"/>
+          <path d="M8 20 Q16 10 24 20" stroke="#00A896" stroke-width="1.5" fill="none"/>
+          <path d="M8 22 Q16 14 24 22" stroke="#fff" stroke-width="1.2" fill="none" opacity=".7"/>
+          <circle cx="16" cy="13" r="1.8" fill="#00A896"/>
+        </svg>
+        <div class="leading-tight">
+          <div class="text-[11px] mono tracking-[.25em] text-[#00A896]">东莞首靠船识别助手 · DG-MSA</div>
+          <div class="text-[22px] font-semibold tracking-tight text-white mt-0.5">东莞首靠船识别助手 · 大屏看板</div>
+        </div>
+      </div>
+
+      <!-- Mid HUD strip -->
+      <div class="flex-1 flex items-center justify-center gap-3">
+        <div class="hud px-3 py-1.5 text-[10.5px] mono text-[#6ee7b7] tracking-wider flex items-center gap-2">
+          <span class="relative inline-block w-1.5 h-1.5 rounded-full pulse-dot" style="background:#00A896;color:#00A896;"></span>
+          SYSTEM · ONLINE
+        </div>
+        <div class="hud px-3 py-1.5 text-[10.5px] mono text-[#93c5fd] tracking-wider">PLAN STORE · LIVE</div>
+        <div class="hud px-3 py-1.5 text-[10.5px] mono text-[#fcd34d] tracking-wider">RULES · v2.2</div>
+        <div class="hud px-3 py-1.5 text-[10.5px] mono text-[#f472b6] tracking-wider">AUTO REFRESH · 30s</div>
+      </div>
+
+      <!-- Nav links -->
+      <div class="flex items-center gap-2 shrink-0">
+        <a href="index.html" class="hud px-2.5 py-1.5 text-[10.5px] mono text-[#93c5fd] tracking-wider" style="text-decoration:none;cursor:pointer;transition:color .15s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#93c5fd'">← CMD</a>
+        <a href="plan-upload.html" class="hud px-2.5 py-1.5 text-[10.5px] mono text-[#6ee7b7] tracking-wider" style="text-decoration:none;cursor:pointer;transition:color .15s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6ee7b7'">UPLOAD</a>
+        <a href="risk-report.html" class="hud px-2.5 py-1.5 text-[10.5px] mono text-[#fcd34d] tracking-wider" style="text-decoration:none;cursor:pointer;transition:color .15s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#fcd34d'">RISK</a>
+      </div>
+
+      <!-- Clock -->
+      <div class="text-right shrink-0">
+        <div class="mono text-[30px] font-semibold leading-none text-white tracking-tight" x-text="clock"></div>
+        <div class="mono text-[11px] text-[#64748b] tracking-[.25em] uppercase mt-1.5" x-text="dateLabel"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ KPI STRIP ============ -->
+  <section data-stagger style="animation-delay:80ms" class="grid grid-cols-4 gap-4 shrink-0">
+    <template x-for="(k,i) in kpis" :key="k.label">
+      <div class="panel corner relative overflow-hidden p-5 flex items-center gap-5" style="height:118px;">
+        <!-- icon -->
+        <div class="w-14 h-14 rounded-lg flex items-center justify-center shrink-0" :style="`background:${k.bg};`">
+          <span :style="`color:${k.color};`" x-html="k.icon"></span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-[10.5px] mono uppercase tracking-[.2em] text-[#94a3b8]" x-text="k.label"></div>
+          <div class="mt-1.5 flex items-baseline gap-2">
+            <span class="mono font-semibold leading-none" :class="k.color==='#ef4444'||k.color==='#fca5a5'?'glow-red':'glow'" :style="`font-size:48px; color:${k.color};`" x-text="k.value"></span>
+            <span class="mono text-[13px] text-[#64748b]" x-text="k.unit"></span>
+          </div>
+          <div class="mt-1 text-[11px] text-[#94a3b8]" x-html="k.trend"></div>
+        </div>
+        <!-- sparkline -->
+        <div class="w-24 h-12 shrink-0" :id="'spark'+i"></div>
+      </div>
+    </template>
+  </section>
+
+  <!-- ============ MIDDLE REGION ============ -->
+  <section class="grid grid-cols-12 gap-4 flex-1 min-h-0">
+    <!-- LEFT: Ship Ticker -->
+    <div data-stagger style="animation-delay:160ms" class="panel corner col-span-5 p-4 flex flex-col min-h-0">
+      <div class="panel-title">
+        今日首靠船动态
+        <span class="suffix">LIVE · <span x-text="ships.length"></span> 艘</span>
+      </div>
+      <!-- table head -->
+      <div class="mt-3 grid grid-cols-[1.3fr_1fr_.7fr_.6fr_.6fr] gap-3 px-3 py-2 text-[10px] mono uppercase tracking-widest text-[#64748b] border-b border-[rgba(255,255,255,.06)]">
+        <span>船舶 / 船长</span><span>IMO / MMSI</span><span>ETA · 泊位</span><span class="text-right">分</span><span class="text-right">等级</span>
+      </div>
+      <!-- scrolling ticker -->
+      <div class="flex-1 mt-1 overflow-hidden relative">
+        <div class="ticker">
+          <template x-for="(s,i) in [...ships,...ships]" :key="i">
+            <div class="grid grid-cols-[1.3fr_1fr_.7fr_.6fr_.6fr] gap-3 px-3 py-3 items-center border-b border-[rgba(255,255,255,.04)]">
+              <div class="min-w-0">
+                <div class="text-[13px] text-white truncate flex items-center gap-1.5">
+                  <template x-if="s.veto"><span class="relative inline-block w-1.5 h-1.5 rounded-full pulse-dot" style="background:#ef4444;color:#ef4444;"></span></template>
+                  <span x-text="s.name"></span>
+                </div>
+                <div class="text-[10.5px] text-[#94a3b8] mt-0.5" x-text="'船长 · '+s.captain"></div>
+              </div>
+              <div class="mono text-[11px] text-[#cbd5e1] min-w-0">
+                <div class="truncate" x-text="s.imo"></div>
+                <div class="text-[#64748b] truncate" x-text="s.mmsi"></div>
+              </div>
+              <div class="mono text-[11px] min-w-0">
+                <div class="text-[#cbd5e1]" x-text="s.eta"></div>
+                <div class="text-[#64748b] truncate" x-text="s.berth"></div>
+              </div>
+              <div class="text-right">
+                <span class="mono text-[16px] font-semibold" :style="`color:${s.level==='高'?'#ef4444':s.level==='中'?'#f59e0b':'#10b981'}`" x-text="s.score"></span>
+              </div>
+              <div class="text-right">
+                <span :class="s.level==='高'?'tag tag-high':s.level==='中'?'tag tag-mid':'tag tag-low'" x-text="s.level"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER: Harbor Radar -->
+    <div data-stagger style="animation-delay:220ms" class="panel corner col-span-4 p-4 flex flex-col min-h-0 relative">
+      <div class="panel-title">
+        辖区泊位雷达
+        <span class="suffix">14 BERTHS · 7 HIT</span>
+      </div>
+      <!-- Radar SVG -->
+      <div class="flex-1 mt-2 relative flex items-center justify-center">
+        <svg viewBox="0 0 400 400" class="w-full h-full max-h-[460px]">
+          <!-- concentric rings -->
+          <g stroke="rgba(0,168,150,.25)" fill="none" stroke-dasharray="2 4">
+            <circle cx="200" cy="200" r="60"/>
+            <circle cx="200" cy="200" r="110"/>
+            <circle cx="200" cy="200" r="160"/>
+            <circle cx="200" cy="200" r="190" stroke-dasharray="0"/>
+          </g>
+          <!-- cross axis -->
+          <g stroke="rgba(0,168,150,.18)" stroke-width="1">
+            <line x1="10" y1="200" x2="390" y2="200"/>
+            <line x1="200" y1="10" x2="200" y2="390"/>
+            <line x1="60" y1="60" x2="340" y2="340"/>
+            <line x1="60" y1="340" x2="340" y2="60"/>
+          </g>
+          <!-- sweep (rotating) -->
+          <defs>
+            <radialGradient id="sweepGrad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="rgba(0,168,150,.35)"/>
+              <stop offset="100%" stop-color="rgba(0,168,150,0)"/>
+            </radialGradient>
+          </defs>
+          <g transform-origin="200 200">
+            <path d="M200,200 L200,10 A190,190 0 0,1 333,72 Z" fill="url(#sweepGrad)">
+              <animateTransform attributeName="transform" type="rotate" from="0 200 200" to="360 200 200" dur="6s" repeatCount="indefinite"/>
+            </path>
+          </g>
+          <!-- center -->
+          <circle cx="200" cy="200" r="3" fill="#00A896"/>
+          <text x="200" y="218" text-anchor="middle" font-family="Geist Mono" font-size="9" fill="#64748b" letter-spacing="2">DG-PORT</text>
+          <!-- berths (grouped by port area) -->
+          <template x-for="b in berths" :key="b.id">
+            <g>
+              <!-- ring pulse if hit -->
+              <circle x-show="b.hit" :cx="b.x" :cy="b.y" r="12" :fill="b.color" opacity=".15">
+                <animate attributeName="r" values="6;16;6" dur="2.2s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values=".35;0;.35" dur="2.2s" repeatCount="indefinite"/>
+              </circle>
+              <!-- dot -->
+              <circle :cx="b.x" :cy="b.y" :r="b.hit?5:3" :fill="b.hit?b.color:'#64748b'" :stroke="b.hit?b.color:'transparent'" stroke-width="1"/>
+              <!-- label -->
+              <text :x="b.x+9" :y="b.y+4" font-family="Geist Mono" font-size="9" :fill="b.hit?'#cbd5e1':'#64748b'" letter-spacing="1" x-text="b.id"></text>
+            </g>
+          </template>
+        </svg>
+      </div>
+      <!-- Legend -->
+      <div class="flex items-center justify-around text-[10.5px] mono text-[#94a3b8] pt-3 border-t border-[rgba(255,255,255,.06)]">
+        <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full" style="background:#ef4444;box-shadow:0 0 8px #ef4444;"></i>高风险</span>
+        <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full" style="background:#f59e0b;box-shadow:0 0 8px #f59e0b;"></i>中风险</span>
+        <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full" style="background:#10b981;box-shadow:0 0 8px #10b981;"></i>低风险</span>
+        <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full" style="background:#64748b"></i>空泊</span>
+      </div>
+    </div>
+
+    <!-- RIGHT: VETO + Key Alerts -->
+    <div class="col-span-3 flex flex-col gap-4 min-h-0">
+      <!-- VETO banner -->
+      <div data-stagger style="animation-delay:280ms" class="panel corner relative overflow-hidden p-5 veto-pulse" style="background:linear-gradient(135deg, rgba(127,29,29,.9) 0%, rgba(69,10,10,.95) 100%); border-color:rgba(239,68,68,.35);">
+        <div class="flex items-center gap-2">
+          <span class="relative inline-block w-2 h-2 rounded-full pulse-dot" style="background:#fca5a5;color:#fca5a5;"></span>
+          <span class="text-[10.5px] mono tracking-[.25em] uppercase text-[#fca5a5]">VETO · 一票否决</span>
+        </div>
+        <div class="mt-3 mono text-[48px] font-semibold leading-none text-white glow-red" x-text="vetoShips.length"></div>
+        <div class="mt-2 text-[12px] text-[#fecaca]" x-text="vetoShips.length ? '须立即登轮核查' : '今日无 VETO 触发'"></div>
+        <div class="mt-4 pt-3 border-t border-white/10 space-y-2">
+          <template x-for="s in vetoShips.slice(0,4)" :key="s.imo">
+            <div class="flex items-center justify-between text-[11.5px]">
+              <span class="text-white truncate" x-text="s.name"></span>
+              <span class="mono text-[#fca5a5] truncate" x-text="(s.hits||[]).find(h=>h.veto)?.dim || 'VETO'"></span>
+            </div>
+          </template>
+          <template x-if="vetoShips.length===0">
+            <div class="text-[11.5px] text-[#fecaca]/60">所有船舶强制规则均通过</div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Risk Donut mini -->
+      <div data-stagger style="animation-delay:320ms" class="panel corner p-4 flex-1 min-h-0 flex flex-col">
+        <div class="panel-title">风险等级分布<span class="suffix">7D</span></div>
+        <div id="riskDonut" class="flex-1 min-h-0"></div>
+        <div class="grid grid-cols-3 gap-2 pt-3 border-t border-[rgba(255,255,255,.06)]">
+          <div class="text-center">
+            <div class="text-[10px] mono text-[#64748b] uppercase tracking-widest">低</div>
+            <div class="mono text-[18px] font-semibold mt-0.5" style="color:#10b981;" x-text="lowCount"></div>
+          </div>
+          <div class="text-center">
+            <div class="text-[10px] mono text-[#64748b] uppercase tracking-widest">中</div>
+            <div class="mono text-[18px] font-semibold mt-0.5" style="color:#f59e0b;" x-text="midCount"></div>
+          </div>
+          <div class="text-center">
+            <div class="text-[10px] mono text-[#64748b] uppercase tracking-widest">高</div>
+            <div class="mono text-[18px] font-semibold mt-0.5" style="color:#ef4444;" x-text="highCount"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ BOTTOM REGION ============ -->
+  <section class="grid grid-cols-12 gap-4 shrink-0" style="height:240px;">
+    <!-- Trend -->
+    <div data-stagger style="animation-delay:380ms" class="panel corner col-span-6 p-4 flex flex-col">
+      <div class="panel-title">近 7 日首靠船趋势<span class="suffix">STACKED · W19</span></div>
+      <div id="trendChart" class="flex-1"></div>
+    </div>
+
+    <!-- Ship Type -->
+    <div data-stagger style="animation-delay:440ms" class="panel corner col-span-3 p-4 flex flex-col">
+      <div class="panel-title">重点船型<span class="suffix">TOP 4</span></div>
+      <div id="typeBar" class="flex-1"></div>
+    </div>
+
+    <!-- Nanobot Ticker Feed -->
+    <div data-stagger style="animation-delay:500ms" class="panel corner col-span-3 p-4 flex flex-col relative overflow-hidden">
+      <div class="panel-title">
+        <span class="flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00A896" stroke-width="2"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M8 13h.01M16 13h.01M9 17h6"/></svg>
+          Nanobot 值班助手
+        </span>
+        <span class="suffix">LLM</span>
+      </div>
+      <div class="flex-1 mt-2 overflow-hidden relative">
+        <div class="ticker" style="animation-duration:56s;">
+          <template x-for="(m,i) in [...feed,...feed]" :key="i">
+            <div class="py-2 pr-2 border-b border-[rgba(255,255,255,.04)]">
+              <div class="flex items-start gap-2">
+                <div class="w-5 h-5 rounded-md flex items-center justify-center shrink-0 mt-0.5" :style="`background:${m.color}1a;color:${m.color};`">
+                  <span x-html="m.icon"></span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[11.5px] text-[#cbd5e1] leading-snug" x-text="m.text"></div>
+                  <div class="text-[9.5px] mono text-[#64748b] mt-0.5 tracking-wider uppercase" x-text="m.time"></div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOOTER STRIP ============ -->
+  <div class="flex items-center justify-between text-[10.5px] mono text-[#475569] tracking-[.2em] uppercase px-1 shrink-0">
+    <span>REPORT ID · DAILY-<span x-text="new Date().toISOString().slice(0,10).replace(/-/g,'')"></span> · 自动生成于 <span x-text="clock"></span></span>
+    <span class="flex items-center gap-2">
+      <span class="relative inline-block w-1.5 h-1.5 rounded-full pulse-dot" style="background:#00A896;color:#00A896;"></span>
+      DONGGUAN MSA · 东莞首靠船识别助手 · V2.2
+    </span>
+    <span>规则库最后更新 · 当前 · 四字段联合比对</span>
+  </div>
+</div>
+
+<script>
+function dashboardApp(){
+  return {
+    clock:'',
+    dateLabel:'',
+    kpis:[
+      {label:'今日首靠船', value:7, unit:'艘', color:'#00A896', bg:'rgba(0,168,150,.12)', trend:'<span class="mono" style="color:#10b981;">↑ 2</span> 较昨日 +28.5%',
+       icon:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 20l2-2h16l2 2"/><path d="M12 3v15M5 10l7-7 7 7"/></svg>'},
+      {label:'高风险 · 待处置', value:2, unit:'/ 7', color:'#ef4444', bg:'rgba(239,68,68,.12)', trend:'占比 <span class="mono text-white">28.5%</span>',
+       icon:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>'},
+      {label:'一票否决', value:2, unit:'艘', color:'#fca5a5', bg:'rgba(127,29,29,.5)', trend:'配员 <span class="mono text-white">1</span> · PSC <span class="mono text-white">1</span>',
+       icon:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>'},
+      {label:'已登轮检查', value:3, unit:'/ 7', color:'#10b981', bg:'rgba(16,185,129,.12)', trend:'完成率 <span class="mono text-white">42.8%</span>',
+       icon:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="20 6 9 17 4 12"/></svg>'},
+    ],
+    ships:[
+      {name:'粤东莞货2001',captain:'陈海川',imo:'9876543',mmsi:'412345678',eta:'15:40',berth:'沙田 3#',score:68,level:'高',veto:true},
+      {name:'浙海运油19',captain:'林建峰',imo:'9712345',mmsi:'413098765',eta:'16:20',berth:'立沙岛 2#',score:82,level:'高',veto:true},
+      {name:'粤穗化工8',captain:'黄志诚',imo:'9823456',mmsi:'412567890',eta:'17:05',berth:'立沙岛 1#',score:47,level:'中',veto:false},
+      {name:'闽安达7',captain:'张明辉',imo:'9654321',mmsi:'412445566',eta:'18:30',berth:'麻涌 A#',score:38,level:'中',veto:false},
+      {name:'粤深蓝118',captain:'郑伟强',imo:'9998877',mmsi:'412223344',eta:'19:15',berth:'虎门客运',score:32,level:'中',veto:false},
+      {name:'粤东莞货3032',captain:'刘志坚',imo:'9445566',mmsi:'413334455',eta:'20:50',berth:'沙田 5#',score:19,level:'低',veto:false},
+      {name:'粤新港货88',captain:'吴海涛',imo:'9556677',mmsi:'412889900',eta:'22:10',berth:'新沙 B#',score:14,level:'低',veto:false},
+    ],
+    berths:[
+      // 沙田港区（左上）
+      {id:'SHA-1',x:100,y:110,hit:false,color:'#64748b'},
+      {id:'SHA-3',x:140,y:95,hit:true,color:'#ef4444'},
+      {id:'SHA-5',x:170,y:130,hit:true,color:'#10b981'},
+      // 立沙岛（右上）
+      {id:'LSD-1',x:280,y:90,hit:true,color:'#f59e0b'},
+      {id:'LSD-2',x:315,y:120,hit:true,color:'#ef4444'},
+      // 虎门（右下）
+      {id:'HUM-C',x:310,y:280,hit:true,color:'#f59e0b'},
+      {id:'HUM-2',x:340,y:240,hit:false,color:'#64748b'},
+      // 麻涌港（左下）
+      {id:'MCN-A',x:90,y:260,hit:true,color:'#f59e0b'},
+      {id:'MCN-B',x:130,y:300,hit:false,color:'#64748b'},
+      // 新沙港（中下）
+      {id:'XSA-B',x:220,y:320,hit:true,color:'#10b981'},
+      {id:'XSA-1',x:190,y:340,hit:false,color:'#64748b'},
+      // 零星
+      {id:'NX-07',x:60,y:180,hit:false,color:'#64748b'},
+      {id:'NX-12',x:350,y:180,hit:false,color:'#64748b'},
+      {id:'NX-19',x:200,y:60,hit:false,color:'#64748b'},
+    ],
+    feed:[
+      {text:'粤东莞货2001 · 风险分 68 · 已自动派遣虎门一队登轮',time:'14:28 · 系统',color:'#ef4444',
+       icon:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>'},
+      {text:'Nanobot：近 7 天油轮首靠同比上升 24%',time:'14:15 · 洞察',color:'#f59e0b',
+       icon:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 6l-9.5 9.5-5-5L1 18"/></svg>'},
+      {text:'浙海运油19 · 命中 R-PSC-003 · 2024年厦门滞留',time:'14:04 · 规则',color:'#00A896',
+       icon:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>'},
+      {text:'规则库新增 R-CARGO-009（锂电池混装强化）',time:'13:42 · 规则库',color:'#60a5fa',
+       icon:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>'},
+      {text:'粤穗化工8 已完成登轮核查 · 无异常',time:'13:30 · 执法',color:'#10b981',
+       icon:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'},
+      {text:'Nanobot：陈海川船长近一年 4 次首靠不同船，建议建档',time:'13:12 · 建议',color:'#f472b6',
+       icon:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 2v10l7 3"/></svg>'},
+    ],
+    init(){
+      this.tick();
+      setInterval(()=>this.tick(), 1000);
+      // ===== 数据融合：PlanStore 今日上传 + SHIP_LIST + RuleEngine =====
+      try{ this.loadData(); }catch(e){ console.warn('[dashboard] loadData error', e); }
+      this.$nextTick(()=>{
+        this.renderSparks();
+        this.renderDonut();
+        this.renderTrend();
+        this.renderType();
+      });
+      window.addEventListener('resize',()=>{
+        (this._sparks||[]).forEach(s=>s&&s.resize());
+        this._donut&&this._donut.resize();
+        this._trend&&this._trend.resize();
+        this._type&&this._type.resize();
+      });
+    },
+    // ===== 动态数据加载 =====
+    loadData(){
+      // 1. 从 PlanStore 获取今日上传的船舶行
+      var todayPlans = [];
+      var uploadRecords = [];
+      if(window.PlanStore){
+        todayPlans = PlanStore.getAll().filter(function(p){
+          return p.ingestAt && p.ingestAt.slice(0,10) === new Date().toISOString().slice(0,10);
+        });
+        uploadRecords = PlanStore.getUploadHistory(10);
+      }
+
+      // 2. 合并船舶数据：优先用 SHIP_LIST + RuleEngine，再用 PlanStore 补充
+      var shipMap = {};
+      var shipArr = [];
+      // 先加载 SHIP_LIST（有完整指标和规则引擎）
+      if(Array.isArray(window.SHIP_LIST) && window.SHIP_LIST.length){
+        window.SHIP_LIST.forEach(function(s){
+          var record = {};
+          try{
+            if(window.RuleEngine){
+              var r = window.RuleEngine.evalShip(s);
+              record = { name:s.name, captain:s.captain, imo:s.imo, mmsi:s.mmsi,
+                eta:s.eta, berth:s.berth, type:s.type,
+                score:r.score, level:r.level, veto:r.veto, hits:r.hits };
+            } else {
+              record = { name:s.name, captain:s.captain, imo:s.imo, mmsi:s.mmsi,
+                eta:s.eta, berth:s.berth, type:s.type,
+                score:s.score, level:s.level, veto:!!s.veto, hits:[] };
+            }
+          }catch(e){
+            record = { name:s.name, captain:s.captain, imo:s.imo, mmsi:s.mmsi,
+              eta:s.eta, berth:s.berth, type:s.type,
+              score:s.score, level:s.level, veto:!!s.veto, hits:[] };
+          }
+          shipMap[s.name] = true;
+          shipArr.push(record);
+        });
+      }
+      // 补充 PlanStore 中有、但 SHIP_LIST 中没有的船舶（规则引擎评估）
+      todayPlans.forEach(function(p){
+        if(!shipMap[p.shipName]){
+          shipMap[p.shipName] = true;
+          var ev = null;
+          try { if(window.RuleEngine) ev = RuleEngine.evalPlanRow(p); } catch(e){}
+          if(ev){
+            shipArr.push({ name:p.shipName, captain:p.captain||'', imo:'-', mmsi:'-',
+              eta: (p.eta||'').slice(0,5), berth: p.berth||'',
+              type: p.shipType||'', score:ev.score, level:ev.level, veto:ev.veto, hits:ev.hits });
+          } else {
+            shipArr.push({ name:p.shipName, captain:p.captain||'', imo:'-', mmsi:'-',
+              eta: (p.eta||'').slice(0,5), berth: p.berth||'',
+              type: p.shipType||'', score:0, level:'低', veto:false, hits:[] });
+          }
+        }
+      });
+      if(shipArr.length) this.ships = shipArr;
+
+      // 3. 更新泊位占用（根据 ships 的 berth 字段匹配）
+      var berthIds = {};
+      this.ships.forEach(function(s){ if(s.berth) berthIds[s.berth] = s.level; });
+      this.berths.forEach(function(b){
+        var match = false;
+        Object.keys(berthIds).forEach(function(k){
+          if(k && b.id && (k.includes(b.id) || b.id.includes(k.replace(/[\s#号泊位]/g,'')))) match = berthIds[k];
+        });
+        if(match){
+          b.hit = true;
+          b.color = match==='高'?'#ef4444':match==='中'?'#f59e0b':'#10b981';
+        } else { b.hit = false; b.color = '#64748b'; }
+      });
+
+      // 4. 刷新 KPI
+      this.refreshKpis();
+
+      // 5. 从上传记录生成 Feed 时间线
+      if(uploadRecords.length){
+        var feedItems = [];
+        var todayStr = new Date().toISOString().slice(0,10);
+        uploadRecords.forEach(function(u){
+          var isToday = u.time && u.time.slice(0,10) === todayStr;
+          var statusColor = u.status === 'ok' ? '#10b981' : '#f59e0b';
+          var statusText = u.status === 'ok' ? '全部入库' : (u.note||'待处理');
+          var icon = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+          if(u.firstCall > 0){
+            feedItems.push({ text: u.file+' · 识别首靠船 '+u.firstCall+' 艘 · '+statusText,
+              time: (u.time||'').slice(11,16)+' · '+(u.user||'系统'), color:'#00A896', icon:icon });
+          }
+          feedItems.push({ text: u.file+' · '+u.rows+' 行入库 · '+statusText,
+            time: (u.time||'').slice(11,16)+' · '+(u.user||'系统'), color:statusColor, icon:icon });
+        });
+        // 保留一些系统消息
+        feedItems.push({ text:'Nanobot：近 7 天油轮首靠同比上升 24%', time:'洞察', color:'#f59e0b',
+          icon:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 6l-9.5 9.5-5-5L1 18"/></svg>' });
+        feedItems.push({ text:'规则库 v2.0.3 · 四字段联合比对 · 6 月滚动', time:'系统', color:'#64748b',
+          icon:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' });
+        this.feed = feedItems;
+      }
+    },
+    // ===== 趋势图数据：从上传历史统计 =====
+    getTrendData(){
+      if(!window.PlanStore) return null;
+      var uploads = PlanStore.getUploadHistory(50);
+      var today = new Date();
+      var days = [];
+      var trendLow=[], trendMid=[], trendHigh=[], trendTotal=[];
+      for(var d=6; d>=0; d--){
+        var date = new Date(today.getTime() - d*86400000);
+        var ds = date.toISOString().slice(0,10);
+        var label = String(date.getMonth()+1).padStart(2,'0')+'/'+String(date.getDate()).padStart(2,'0');
+        days.push(label);
+        var dayUploads = uploads.filter(function(u){ return u.time && u.time.slice(0,10)===ds; });
+        var low=0, mid=0, high=0;
+        dayUploads.forEach(function(u){
+          // 简化：无风险等级数据时按 total 分配
+          low += Math.floor(u.rows * 0.4);
+          mid += Math.floor(u.rows * 0.4);
+          high += u.rows - Math.floor(u.rows*0.4)*2;
+        });
+        trendLow.push(low); trendMid.push(mid); trendHigh.push(high);
+        trendTotal.push(low+mid+high);
+      }
+      return {days:days, low:trendLow, mid:trendMid, high:trendHigh, total:trendTotal};
+    },
+    // ===== Engine-driven derived data =====
+    get vetoShips(){ return this.ships.filter(s => s.veto); },
+    get lowCount(){ return this.ships.filter(s => s.level==='低').length; },
+    get midCount(){ return this.ships.filter(s => s.level==='中').length; },
+    get highCount(){ return this.ships.filter(s => s.level==='高').length; },
+    refreshKpis(){
+      const total = this.ships.length;
+      const high = this.highCount;
+      const veto = this.vetoShips.length;
+      // 一票否决原因维度分布
+      const reasonMap = {};
+      this.vetoShips.forEach(s => {
+        const vh = (s.hits||[]).find(h=>h.veto);
+        if(vh){ const k = vh.dim || '其他'; reasonMap[k] = (reasonMap[k]||0)+1; }
+      });
+      const reasonTrend = Object.keys(reasonMap)
+        .map(k=>`${k} <span class="mono text-white">${reasonMap[k]}</span>`).join(' · ') || '无 VETO';
+      // 在库数据量（来自 PlanStore）
+      const inStore = window.PlanStore ? PlanStore.getStats().totalInStore : 0;
+      this.kpis = [
+        Object.assign({}, this.kpis[0], { value: total, trend: total ? `<span class="mono" style="color:#10b981;">↑</span> 实时 ${total} 艘 · 在库 ${inStore.toLocaleString()}` : '今日暂无首靠船' }),
+        Object.assign({}, this.kpis[1], { value: high, unit: `/ ${total}`,
+          trend: `占比 <span class="mono text-white">${total ? Math.round(high/total*100) : 0}%</span>` }),
+        Object.assign({}, this.kpis[2], { value: veto, trend: reasonTrend }),
+        Object.assign({}, this.kpis[3], { value: 0, unit: `/ ${total}`,
+          trend: `待派遣 <span class="mono text-white">${total}</span> 艘` }),
+      ];
+    },
+    tick(){
+      const d=new Date();
+      const p=n=>String(n).padStart(2,'0');
+      this.clock = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+      const wk='日一二三四五六';
+      this.dateLabel = `${d.getFullYear()}·${p(d.getMonth()+1)}·${p(d.getDate())} · 周${wk[d.getDay()]}`;
+    },
+    renderSparks(){
+      // 从趋势数据动态生成 sparkline 数据
+      var td = this.getTrendData();
+      var sparkData;
+      if(td && td.total.reduce((a,b)=>a+b,0) > 0){
+        sparkData = [td.total, td.high, td.low, td.mid];
+      } else {
+        // 回退：基于当前 ships 生成简易伪趋势
+        var t = this.ships.length;
+        var h = this.highCount;
+        var m = this.midCount;
+        var l = this.lowCount;
+        sparkData = [
+          [Math.max(1,t-3), Math.max(1,t-2), Math.max(1,t-1), t, Math.max(1,t-1), t, t+1],
+          [Math.max(0,h-2), Math.max(0,h-1), h, Math.max(0,h-1), h, h+1, h],
+          [Math.max(0,l-1), l, Math.max(0,l-1), l, l+1, l, l],
+          [Math.max(0,m-1), m, Math.max(0,m-1), m, m, m+1, m],
+        ];
+      }
+      const colors=['#00A896','#ef4444','#fca5a5','#10b981'];
+      this._sparks=[];
+      for(let i=0;i<4;i++){
+        const el=document.getElementById('spark'+i); if(!el) continue;
+        const c=echarts.init(el);
+        c.setOption({
+          grid:{top:4,right:2,bottom:4,left:2},
+          xAxis:{type:'category',show:false,data:sparkData[i].map((_,k)=>k),boundaryGap:false},
+          yAxis:{type:'value',show:false},
+          series:[{type:'line',smooth:true,symbol:'none',data:sparkData[i],
+            lineStyle:{color:colors[i],width:2},
+            areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:colors[i]+'55'},{offset:1,color:colors[i]+'00'}]}}}]
+        });
+        this._sparks.push(c);
+      }
+    },
+    renderDonut(){
+      const el=document.getElementById('riskDonut'); if(!el) return;
+      this._donut=echarts.init(el);
+      const total = this.ships.length;
+      this._donut.setOption({
+        tooltip:{trigger:'item',backgroundColor:'#0a1530',borderColor:'rgba(0,168,150,.3)',textStyle:{color:'#fff',fontFamily:'Geist Mono',fontSize:11}},
+        series:[{
+          type:'pie', radius:['58%','82%'], avoidLabelOverlap:false,
+          itemStyle:{borderColor:'#0a1530',borderWidth:3,borderRadius:4},
+          label:{show:true,position:'center',formatter:`{b|${total}}\n{d|TOTAL}`,rich:{
+            b:{fontSize:30,fontFamily:'Geist Mono',fontWeight:600,color:'#fff'},
+            d:{fontSize:10,color:'#64748b',letterSpacing:3,padding:[6,0,0,0],fontFamily:'Geist Mono'}
+          }},
+          data:[
+            {value:this.lowCount, name:'低',itemStyle:{color:'#10b981'}},
+            {value:this.midCount, name:'中',itemStyle:{color:'#f59e0b'}},
+            {value:this.highCount,name:'高',itemStyle:{color:'#ef4444'}},
+          ]
+        }]
+      });
+    },
+    renderTrend(){
+      const el=document.getElementById('trendChart'); if(!el) return;
+      this._trend=echarts.init(el);
+      // 优先使用上传历史动态数据，否则回退到默认
+      var td = this.getTrendData();
+      if(!td || td.total.reduce((a,b)=>a+b,0)===0){
+        td = { days:['05/06','05/07','05/08','05/09','05/10','05/11','05/12'],
+          low:[3,2,4,5,3,3,2], mid:[2,3,2,3,2,3,3], high:[1,1,2,1,1,1,2], total:[6,6,8,9,6,7,7] };
+      }
+      this._trend.setOption({
+        grid:{top:10,right:20,bottom:30,left:36},
+        tooltip:{trigger:'axis',backgroundColor:'#0a1530',borderColor:'rgba(0,168,150,.3)',textStyle:{color:'#fff',fontFamily:'Geist Mono',fontSize:11}},
+        legend:{show:false},
+        xAxis:{type:'category',data:td.days,
+          axisLine:{lineStyle:{color:'rgba(255,255,255,.08)'}},axisTick:{show:false},
+          axisLabel:{color:'#64748b',fontFamily:'Geist Mono',fontSize:10,letterSpacing:1}},
+        yAxis:{type:'value',
+          splitLine:{lineStyle:{color:'rgba(255,255,255,.04)',type:'dashed'}},
+          axisLabel:{color:'#64748b',fontFamily:'Geist Mono',fontSize:10}},
+        series:[
+          {name:'低',type:'bar',stack:'x',data:td.low,itemStyle:{color:'#10b981'},barWidth:24},
+          {name:'中',type:'bar',stack:'x',data:td.mid,itemStyle:{color:'#f59e0b'}},
+          {name:'高',type:'bar',stack:'x',data:td.high,itemStyle:{color:'#ef4444',borderRadius:[4,4,0,0]}},
+          {name:'总趋势',type:'line',data:td.total,smooth:true,symbol:'circle',symbolSize:6,
+            lineStyle:{color:'#00A896',width:2},itemStyle:{color:'#00A896',borderColor:'#0a1530',borderWidth:2}},
+        ]
+      });
+    },
+    renderType(){
+      const el=document.getElementById('typeBar'); if(!el) return;
+      this._type=echarts.init(el);
+      // 按真实船型聚合
+      const TYPE_RULES = [
+        { key:'油轮',     match:t => /油|tanker/i.test(t),                   color:'#ef4444' },
+        { key:'化学品',   match:t => /化学|chem/i.test(t),                   color:'#f59e0b' },
+        { key:'集装箱',   match:t => /集装箱|container/i.test(t),            color:'#a855f7' },
+        { key:'其他',     match:t => true,                                   color:'#06b6d4' },
+      ];
+      const counts = {};
+      TYPE_RULES.forEach(r => counts[r.key] = 0);
+      this.ships.forEach(s => {
+        const t = s.type || '';
+        for(const r of TYPE_RULES){ if(r.match(t)){ counts[r.key]++; break; } }
+      });
+      const cats = TYPE_RULES.map(r => r.key);
+      const data = TYPE_RULES.map(r => ({ value: counts[r.key], itemStyle:{ color:r.color } }));
+      const maxV = Math.max.apply(null, data.map(d=>d.value).concat([1]));
+      this._type.setOption({
+        grid:{top:6,right:28,bottom:6,left:62},
+        tooltip:{backgroundColor:'#0a1530',borderColor:'rgba(0,168,150,.3)',textStyle:{color:'#fff',fontFamily:'Geist Mono',fontSize:11}},
+        xAxis:{type:'value',show:false,max:Math.max(maxV+1, 4)},
+        yAxis:{type:'category',inverse:true,data:cats,
+          axisLine:{show:false},axisTick:{show:false},
+          axisLabel:{color:'#cbd5e1',fontFamily:'Geist',fontSize:11}},
+        series:[{
+          type:'bar', data:data,
+          barWidth:14,
+          itemStyle:{borderRadius:[0,4,4,0]},
+          label:{show:true,position:'right',color:'#cbd5e1',fontFamily:'Geist Mono',fontSize:11,formatter:'{c}'}
+        }]
+      });
+    }
+  };
+}
+</script>
+<script>
+  document.addEventListener('DOMContentLoaded',()=>{
+    const bindNb=()=>{
+      if(!window.NanobotChat) return setTimeout(bindNb,80);
+      NanobotChat.setContext(`你是「东莞首靠船识别助手 · Nanobot」，当前页面：监控大屏。\n用户是值班指挥人员，可基于今日实时数据回答首靠船统计、风险等级分布、异常告警等问题。\n回答风格：极简、数字优先、给出值班建议。`);
+      NanobotChat.injectFloatingButton();
+    };
+    bindNb();
+  });
+</script>
+</body>
+</html>

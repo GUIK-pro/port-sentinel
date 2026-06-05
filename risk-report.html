@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>东莞首靠船识别助手 · 风险报告</title>
+<script src="auth-guard.js"></script>
+<script src="ship-data.js"></script>
+<script src="plan-store.js"></script>
+<script src="rule-engine.js"></script>
+<script src="data-sources.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script defer src="nanobot-chat.js?v=3"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:"Geist","HarmonyOS Sans SC","PingFang SC",sans-serif;background:#f0f4f8;color:#0b1220;-webkit-font-smoothing:antialiased;}
+  .mono{font-family:"Geist Mono","JetBrains Mono",ui-monospace,monospace;font-feature-settings:"tnum";}
+  .container{max-width:1400px;margin:0 auto;padding:20px}
+  
+  .header{background:linear-gradient(135deg,#1a3a5c 0%,#2c5f8e 100%);color:#fff;padding:24px 32px;border-radius:12px 12px 0 0;box-shadow:0 4px 20px rgba(26,58,92,0.3)}
+  .header h1{font-size:26px;font-weight:700;letter-spacing:2px}
+  .header .subtitle{font-size:13px;opacity:.85;margin-top:6px}
+  
+  .info-bar{background:#fff;padding:16px 32px;display:flex;gap:40px;flex-wrap:wrap;border-bottom:2px solid #e8ecf1}
+  .info-item{display:flex;align-items:center;gap:8px}
+  .info-item label{color:#5a7a96;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  .info-item input{border:none;border-bottom:2px solid #d0dae6;padding:4px 8px;font-size:15px;color:#1a3a5c;font-weight:600;background:transparent;outline:none;transition:.3s;min-width:100px}
+  .info-item input:focus{border-color:#2c5f8e}
+  
+  .main{display:flex;gap:20px;margin-top:20px}
+  .left{flex:1.4;min-width:0}
+  .right{flex:1;min-width:380px}
+  
+  .card{background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.06);margin-bottom:20px;overflow:hidden}
+  .card-header{background:linear-gradient(90deg,#2c5f8e 0%,#4a8bc2 100%);color:#fff;padding:12px 20px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .card-body{padding:20px}
+  
+  /* Nanobot 报告区 */
+  .nb-report-area{background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.06);margin-bottom:20px;overflow:hidden}
+  .nb-report-header{background:linear-gradient(135deg,#0a1f44,#00A896);color:#fff;padding:16px 20px;display:flex;align-items:center;justify-content:space-between}
+  .nb-report-header h2{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .nb-report-body{min-height:360px;padding:24px 20px;background:linear-gradient(180deg,#fafbfc,#f0f4f8)}
+  .nb-placeholder{text-align:center;padding:60px 20px;color:#64748b}
+  .nb-placeholder .nb-icon{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#0a1f44,#00A896);margin:0 auto 16px;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 8px 24px -6px rgba(10,31,68,.3)}
+  .nb-placeholder h3{font-size:16px;font-weight:600;color:#0b1220;margin-bottom:4px}
+  .nb-placeholder p{font-size:13px;line-height:1.7;max-width:420px;margin:0 auto 20px}
+  .nb-placeholder .nb-quick-tips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  .nb-placeholder .nb-quick-tips button{padding:7px 16px;border-radius:99px;background:#fff;border:1px solid #d0dae6;font-size:12px;color:#475569;cursor:pointer;transition:all .15s}
+  .nb-placeholder .nb-quick-tips button:hover{border-color:#00A896;color:#0a1f44;background:#E6F7F4}
+  .nb-report-output{padding:0 0 16px 0}
+  .nb-report-msg{display:flex;gap:12px;margin-bottom:16px;animation:nbFade .3s ease}
+  @keyframes nbFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .nb-report-msg .nb-r-avatar{width:30px;height:30px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#fff}
+  .nb-report-msg.bot .nb-r-avatar{background:#00A896}
+  .nb-report-msg.user .nb-r-avatar{background:#475569}
+  .nb-report-msg .nb-r-bubble{max-width:calc(100% - 42px);padding:12px 16px;border-radius:12px;font-size:13.5px;line-height:1.7;color:#0b1220;word-wrap:break-word;white-space:pre-wrap}
+  .nb-report-msg.bot .nb-r-bubble{background:#fff;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .nb-report-msg.user .nb-r-bubble{background:#E6F7F4;border:1px solid #b8e6dd;margin-left:auto}
+  
+  /* 右侧仪表盘 */
+  .gauge-box{text-align:center;padding:20px}
+  .gauge-title{font-size:13px;color:#5a7a96;margin-bottom:8px}
+  .risk-badge{display:inline-block;padding:14px 36px;border-radius:50px;font-size:22px;font-weight:800;letter-spacing:3px;margin:10px 0;box-shadow:0 4px 15px rgba(0,0,0,.15)}
+  .risk-low{background:linear-gradient(135deg,#27ae60,#2ecc71);color:#fff}
+  .risk-mid{background:linear-gradient(135deg,#f39c12,#f1c40f);color:#fff}
+  .risk-high{background:linear-gradient(135deg,#c0392b,#e74c3c);color:#fff}
+  .stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:16px}
+  .stat-card{background:linear-gradient(135deg,#f8fafc,#eef3f9);border-radius:10px;padding:14px;text-align:center;border:1px solid #dde5ef}
+  .stat-num{font-size:26px;font-weight:800;color:#1a3a5c}
+  .stat-label{font-size:11px;color:#7a8fa8;margin-top:4px}
+  
+  .suggestion{background:linear-gradient(135deg,#f0f7ff,#e8f1fa);border-radius:10px;padding:18px 22px;margin-top:16px;border-left:5px solid #2c5f8e}
+  .suggestion h4{color:#1a3a5c;font-size:14px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .suggestion p{color:#4a5568;font-size:13px;line-height:1.8}
+  .watch-list{background:#fff8f0;border-radius:10px;padding:16px 20px;margin-top:12px;border-left:5px solid #e67e22}
+  .watch-list h4{color:#d35400;font-size:14px;margin-bottom:8px}
+  .watch-tag{display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;margin:3px 4px 3px 0}
+  .tag-red{background:#fde8e8;color:#c0392b}
+  .tag-orange{background:#fff3e0;color:#d35400}
+  .tag-green{background:#e8f5e9;color:#27ae60}
+  
+  .btn-group{display:flex;gap:12px;margin-top:20px;justify-content:center}
+  .btn{padding:10px 28px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s}
+  .btn-primary{background:linear-gradient(135deg,#2c5f8e,#4a8bc2);color:#fff}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(44,95,142,.3)}
+  .btn-nanobot{background:linear-gradient(135deg,#0a1f44,#00A896);color:#fff}
+  .btn-nanobot:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,168,150,.35)}
+  .btn-secondary{background:#e8ecf1;color:#4a5568}
+  .btn-secondary:hover{background:#dde5ef}
+  
+  #gaugeChart{height:240px}
+  
+  /* 顶部导航条 */
+  .page-nav{background:#fff;padding:10px 32px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid #e8ecf1;}
+  .page-nav a,.page-nav-label{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:8px;font-size:12.5px;font-weight:600;text-decoration:none;transition:.18s;white-space:nowrap;}
+  .page-nav a{background:#f0f4f8;color:#1a3a5c;border:1px solid #dde5ef;}
+  .page-nav a:hover{background:#2c5f8e;color:#fff;border-color:#2c5f8e;transform:translateY(-1px);box-shadow:0 3px 10px rgba(44,95,142,.18);}
+  .page-nav-label{margin-left:auto;background:transparent;border:none;color:#94a3b8;font-size:11.5px;letter-spacing:.04em;pointer-events:none;}
+
+  @media print{body{background:#fff}.container{max-width:100%;padding:10px}.btn-group,.nb-report-area,.page-nav{display:none}.card{box-shadow:none;border:1px solid #ddd}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- 标题 -->
+<div class="header">
+  <h1>东莞首靠船识别助手 · 风险报告</h1>
+  <div class="subtitle">广东海事局东莞局辖区 | 东莞首靠船识别助手 V2.2</div>
+</div>
+
+<!-- 页面导航 -->
+<nav class="page-nav">
+  <a href="index.html">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+    指挥台
+  </a>
+  <a href="plan-upload.html">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+    上传计划
+  </a>
+  <a href="plan-history.html">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+    查看历史
+  </a>
+  <a href="rules.html">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
+    规则管理
+  </a>
+  <span class="page-nav-label">当前：风险评估报告</span>
+</nav>
+
+<!-- 基本信息 -->
+<div class="info-bar">
+  <div class="info-item"><label>船名</label><input id="shipName" placeholder="请输入船名"></div>
+  <div class="info-item"><label>IMO</label><input id="shipIMO" placeholder="1234567"></div>
+  <div class="info-item"><label>到港日期</label><input id="shipDate" type="date"></div>
+  <div class="info-item"><label>拟靠码头</label><input id="shipBerth" placeholder="沙田港"></div>
+  <div class="info-item"><label>评估人</label><input id="shipEvaluator" placeholder="姓名"></div>
+  <div class="info-item">
+    <button id="genReportBtn" class="btn btn-nanobot" style="padding:8px 20px;font-size:13px;border-radius:8px;">🤖 Nanobot 生成报告</button>
+  </div>
+</div>
+
+<!-- 主内容 -->
+<div class="main">
+
+<!-- 左侧：Nanobot 报告区 -->
+<div class="left">
+
+  <div class="nb-report-area">
+    <div class="nb-report-header">
+      <h2>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M8 13h.01M16 13h.01M9 17h6"/></svg>
+        Nanobot 智能风险评估报告
+      </h2>
+      <span class="mono" style="font-size:11px;opacity:.7;letter-spacing:.1em">LLM · ON DEMAND</span>
+    </div>
+    <div class="nb-report-body" id="reportBody">
+      <div class="nb-placeholder" id="reportPlaceholder">
+        <div class="nb-icon">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M8 13h.01M16 13h.01M9 17h6"/></svg>
+        </div>
+        <h3>Nanobot 风险评估</h3>
+        <p>填写船名等信息后，点击「Nanobot 生成报告」按钮，AI 将基于规则引擎与历史数据输出完整的风险评估报告。</p>
+        <div class="nb-quick-tips">
+          <button onclick="askNanobot('请评估这艘船的整体风险等级')">评估整体风险</button>
+          <button onclick="askNanobot('分析该船的历史安全绩效')">历史绩效分析</button>
+          <button onclick="askNanobot('给出登轮检查建议')">登轮检查建议</button>
+          <button onclick="askNanobot('该船是否存在一票否决风险')">一票否决检查</button>
+        </div>
+      </div>
+      <div class="nb-report-output" id="reportOutput"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 右侧：可视化面板 -->
+<div class="right">
+
+  <div class="card">
+    <div class="card-header">评估结果</div>
+    <div class="card-body" style="text-align:center;padding:24px">
+      <div class="gauge-title">风险总分 / 120</div>
+      <div id="gaugeChart"></div>
+      <div id="riskBadge" class="risk-badge risk-low">等待评估</div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-num" id="dim1">--</div><div class="stat-label">船舶固有 / 30</div></div>
+        <div class="stat-card"><div class="stat-num" id="dim2">--</div><div class="stat-label">历史绩效 / 40</div></div>
+        <div class="stat-card"><div class="stat-num" id="dim3">--</div><div class="stat-label">船员配员 / 25</div></div>
+        <div class="stat-card"><div class="stat-num" id="dim4">--</div><div class="stat-label">航行通航 / 25</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 建议措施 -->
+  <div class="card">
+    <div class="card-header">建议措施</div>
+    <div class="card-body">
+      <div class="suggestion">
+        <h4>📋 处置建议</h4>
+        <p id="suggestText">等待 Nanobot 评估后生成处置建议。</p>
+      </div>
+      <div class="watch-list">
+        <h4>⚠️ 重点风险关注清单</h4>
+        <div id="watchTags"><span class="watch-tag tag-green">待评估</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</div>
+
+<!-- 按钮 -->
+<div class="btn-group">
+  <button class="btn btn-secondary" onclick="location.href='index.html'">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    指挥台
+  </button>
+  <button class="btn btn-secondary" onclick="location.href='plan-upload.html'">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+    上传计划
+  </button>
+  <button class="btn btn-nanobot" onclick="openNanobot()">🤖 问 Nanobot</button>
+  <button class="btn btn-primary" onclick="window.print()">🖨️ 打印报告</button>
+  <button class="btn btn-secondary" onclick="resetReport()">🔄 重置</button>
+</div>
+
+</div>
+
+<script>
+// ============ ECharts 初始化 ============
+let gaugeChart;
+
+document.addEventListener('DOMContentLoaded', function(){
+  gaugeChart = echarts.init(document.getElementById('gaugeChart'));
+  gaugeChart.setOption({
+    series:[{
+      type:'gauge',
+      min:0,max:120,
+      splitNumber:6,
+      axisLine:{lineStyle:{width:18,color:[[25/120,'#27ae60'],[50/120,'#f1c40f'],[1,'#e74c3c']]}},
+      pointer:{length:'70%',width:5,itemStyle:{color:'#1a3a5c'}},
+      axisTick:{distance:-18,length:6,lineStyle:{color:'#fff',width:1}},
+      splitLine:{distance:-18,length:14,lineStyle:{color:'#fff',width:2}},
+      axisLabel:{distance:-40,color:'#5a7a96',fontSize:10},
+      detail:{valueAnimation:true,formatter:'{value}',color:'#1a3a5c',fontSize:32,fontWeight:'bold',offsetCenter:[0,'75%']},
+      data:[{value:0}]
+    }]
+  });
+  window.addEventListener('resize',()=>{gaugeChart.resize();});
+});
+
+// ============ Nanobot 风险评估 ============
+
+function getShipInfo(){
+  var name = document.getElementById('shipName').value.trim() || '未填写';
+  var imo = document.getElementById('shipIMO').value.trim() || '未填写';
+  var date = document.getElementById('shipDate').value || '未填写';
+  var berth = document.getElementById('shipBerth').value.trim() || '未填写';
+  var evaluator = document.getElementById('shipEvaluator').value.trim() || '未填写';
+  return {name:name, imo:imo, date:date, berth:berth, evaluator:evaluator};
+}
+
+function buildShipContext(){
+  var s = getShipInfo();
+  var ctx = '船名：' + s.name + '，IMO：' + s.imo + '，到港日期：' + s.date + '，拟靠码头：' + s.berth + '，评估人：' + s.evaluator + '。';
+  // 尝试从 SHIP_LIST 或 PlanStore 补充引擎数据
+  try{
+    if(window.RuleEngine){
+      var found = null;
+      // 优先从 SHIP_LIST 查找
+      if(window.SHIP_LIST){
+        for(var i=0;i<window.SHIP_LIST.length;i++){
+          var ship = window.SHIP_LIST[i];
+          if(ship.name === s.name || ship.imo === s.imo || ship.mmsi === s.imo){
+            found = ship; break;
+          }
+        }
+      }
+      if(found){
+        var r = window.RuleEngine.evalShip(found);
+        if(r && r.hits && r.hits.length){
+          ctx += '规则引擎命中' + r.hits.length + '条规则，总分' + r.score + '分（' + r.level + '风险' + (r.veto?'，含一票否决':'') + '）。';
+          ctx += '\n引擎维度明细：';
+          if(r.dims) r.dims.forEach(function(d){ ctx += d.k + '=' + d.score + '分；'; });
+        }
+      } else if(window.PlanStore && window.RuleEngine.evalPlanRow) {
+        // 从 PlanStore 查找并评估
+        var plans = PlanStore.getAll();
+        for(var j=0;j<plans.length;j++){
+          if(plans[j].shipName === s.name){
+            var ev = RuleEngine.evalPlanRow(plans[j]);
+            if(ev && ev.hits && ev.hits.length){
+              ctx += '规则引擎（基于计划库数据）命中' + ev.hits.length + '条规则，总分' + ev.score + '分（' + ev.level + '风险' + (ev.veto?'，含一票否决':'') + '）。';
+              ctx += '\n引擎维度明细：';
+              if(ev.dims) ev.dims.forEach(function(d){ ctx += d.k + '=' + d.score + '分；'; });
+            }
+            break;
+          }
+        }
+      }
+    }
+  }catch(e){}
+  return ctx;
+}
+
+function askNanobot(question){
+  var ship = getShipInfo();
+  if(!ship.name || ship.name==='未填写'){
+    // 无船名时用通用语境
+  }
+  var context = '你是「东莞首靠船识别助手 · Nanobot」，当前页面：风险评估报告。\n';
+  context += '当前评估船舶信息：' + buildShipContext() + '\n';
+  context += '请基于上述信息输出完整的风险分析，引用规则编号。回答风格：结构化列点，先风险等级总结，再分维度分析，最后给出处置建议。';
+  
+  if(typeof NanobotChat !== 'undefined'){
+    NanobotChat.clear();
+    NanobotChat.setContext(context);
+    NanobotChat.ask(question);
+  } else {
+    alert('Nanobot 尚未加载，请稍候重试。');
+  }
+}
+
+function openNanobot(){
+  if(typeof NanobotChat !== 'undefined'){
+    var context = '你是「东莞首靠船识别助手 · Nanobot」，当前页面：风险评估报告。\n';
+    context += '当前评估船舶信息：' + buildShipContext();
+    NanobotChat.setContext(context);
+    NanobotChat.open();
+  }
+}
+
+function resetReport(){
+  document.querySelectorAll('.info-bar input').forEach(function(i){ i.value = ''; });
+  document.getElementById('reportOutput').innerHTML = '';
+  document.getElementById('reportPlaceholder').style.display = '';
+  document.getElementById('riskBadge').className = 'risk-badge risk-low';
+  document.getElementById('riskBadge').textContent = '等待评估';
+  document.getElementById('dim1').textContent = '--';
+  document.getElementById('dim2').textContent = '--';
+  document.getElementById('dim3').textContent = '--';
+  document.getElementById('dim4').textContent = '--';
+  document.getElementById('suggestText').textContent = '等待 Nanobot 评估后生成处置建议。';
+  document.getElementById('watchTags').innerHTML = '<span class="watch-tag tag-green">待评估</span>';
+  if(gaugeChart) gaugeChart.setOption({series:[{data:[{value:0}]}]});
+  // 清除 Nanobot 对话历史
+  if(window.NanobotChat && typeof NanobotChat.clear === 'function') NanobotChat.clear();
+}
+
+// 绑定「生成报告」按钮
+document.addEventListener('DOMContentLoaded', function(){
+  document.getElementById('genReportBtn').addEventListener('click', function(){
+    askNanobot('请对该船进行全面风险评估，包括：1）整体风险等级；2）四维度得分分析；3）命中规则清单；4）一票否决检查；5）处置建议与重点关注事项。');
+  });
+});
+
+// Nanobot 页面上下文注入
+document.addEventListener('DOMContentLoaded', function(){
+  var bindNb = function(){
+    if(!window.NanobotChat) return setTimeout(bindNb, 80);
+    var ctx = '你是「东莞首靠船识别助手 · Nanobot」，当前页面：风险评估报告（V2.2）。\n用户在此填写船名等信息后，由你输出完整的风险评估报告。\n回答风格：结构化列点，引用规则编号。';
+    NanobotChat.setContext(ctx);
+    NanobotChat.injectFloatingButton();
+  };
+  bindNb();
+});
+</script>
+</body>
+</html>

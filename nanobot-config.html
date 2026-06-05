@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nanobot · 大模型配置向导</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;background:#f0f4f8;color:#0b1220;min-height:100vh;display:flex;align-items:center;justify-content:center}
+  .container{max-width:640px;width:100%;padding:24px}
+  .card{background:#fff;border-radius:20px;box-shadow:0 1px 2px rgba(11,18,32,.04),0 16px 32px -18px rgba(11,18,32,.08);overflow:hidden}
+  .header{background:linear-gradient(135deg,#0a1f44 0%,#142c5c 100%);color:#fff;padding:32px 36px 28px;text-align:center}
+  .header h1{font-size:22px;font-weight:700;letter-spacing:1px}
+  .header p{font-size:13px;opacity:.75;margin-top:8px}
+  .body{padding:32px 36px}
+  .step{margin-bottom:28px}
+  .step-title{font-size:14px;font-weight:600;color:#0a1f44;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .step-title .num{display:inline-flex;width:22px;height:22px;border-radius:50%;background:#00A896;color:#fff;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+  .providers{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .provider-card{border:2px solid #e8ecf1;border-radius:12px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .18s}
+  .provider-card:hover{border-color:#00A896;background:#f0fdf9}
+  .provider-card.selected{border-color:#00A896;background:#e6f7f4}
+  .provider-card .icon{font-size:24px;margin-bottom:6px}
+  .provider-card .name{font-size:12px;font-weight:600;color:#0a1f44}
+  .provider-card .desc{font-size:10px;color:#64748b;margin-top:2px}
+  label{display:block;font-size:12px;font-weight:500;color:#475569;margin-bottom:6px}
+  input[type="text"],input[type="password"],select{width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;transition:border-color .18s}
+  input:focus,select:focus{border-color:#00A896;box-shadow:0 0 0 3px rgba(0,168,150,.12)}
+  .hint{font-size:11px;color:#94a3b8;margin-top:6px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 28px;border:none;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:all .18s;width:100%}
+  .btn-primary{background:linear-gradient(135deg,#00A896,#02c39a);color:#fff}
+  .btn-primary:hover{box-shadow:0 4px 16px rgba(0,168,150,.3)}
+  .btn-primary:disabled{opacity:.5;cursor:not-allowed}
+  .btn-secondary{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
+  .btn-secondary:hover{background:#e2e8f0}
+  .status-box{padding:16px;border-radius:12px;font-size:13px;line-height:1.7;margin-top:16px}
+  .status-ok{background:#ecfdf5;border:1px solid #a7f3d0;color:#059669}
+  .status-err{background:#fef2f2;border:1px solid #fca5a5;color:#dc2626}
+  .status-warn{background:#fffbeb;border:1px solid #fcd34d;color:#b45309}
+  .mono{font-family:"Geist Mono","JetBrains Mono",ui-monospace,monospace;font-size:11px}
+  .config-preview{background:#1e293b;color:#e2e8f0;border-radius:12px;padding:20px;font-size:12px;line-height:1.8;overflow-x:auto;margin-top:16px}
+  .config-preview .key{color:#7dd3fc}
+  .config-preview .str{color:#86efac}
+  .config-preview .num{color:#fbbf24}
+  .hidden{display:none}
+  .actions{display:flex;gap:10px;margin-top:20px}
+  .actions .btn{flex:1}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <div class="header">
+      <h1>🤖 Nanobot 大模型配置向导</h1>
+      <p>选择 LLM 提供商 · 填入 API Key · 一键生成配置文件</p>
+    </div>
+    <div class="body">
+
+      <!-- Step 1: 选择提供商 -->
+      <div class="step">
+        <div class="step-title"><span class="num">1</span> 选择大模型提供商</div>
+        <div class="providers" id="providerGrid">
+          <div class="provider-card selected" data-provider="deepseek" onclick="selectProvider(this)">
+            <div class="icon">🔵</div>
+            <div class="name">DeepSeek</div>
+            <div class="desc">国内推荐 · 低延迟</div>
+          </div>
+          <div class="provider-card" data-provider="dashscope" onclick="selectProvider(this)">
+            <div class="icon">🟠</div>
+            <div class="name">通义千问</div>
+            <div class="desc">阿里云 · 中文强</div>
+          </div>
+          <div class="provider-card" data-provider="ollama" onclick="selectProvider(this)">
+            <div class="icon">🟢</div>
+            <div class="name">Ollama</div>
+            <div class="desc">完全离线 · 免费</div>
+          </div>
+          <div class="provider-card" data-provider="openrouter" onclick="selectProvider(this)">
+            <div class="icon">🟣</div>
+            <div class="name">OpenRouter</div>
+            <div class="desc">多模型聚合</div>
+          </div>
+          <div class="provider-card" data-provider="siliconflow" onclick="selectProvider(this)">
+            <div class="icon">🔷</div>
+            <div class="name">硅基流动</div>
+            <div class="desc">国产 · 免费额度</div>
+          </div>
+          <div class="provider-card" data-provider="custom" onclick="selectProvider(this)">
+            <div class="icon">⚙️</div>
+            <div class="name">自定义</div>
+            <div class="desc">任意 OpenAI 兼容</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: 配置 API Key / 地址 -->
+      <div class="step" id="apiKeyStep">
+        <div class="step-title"><span class="num">2</span> 配置 API Key</div>
+        <label for="apiKeyInput">API Key</label>
+        <input type="password" id="apiKeyInput" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+        <div class="hint" id="apiKeyHint">获取地址：<a href="https://platform.deepseek.com" target="_blank">platform.deepseek.com</a></div>
+        <div class="hidden" id="apiBaseGroup" style="margin-top:14px">
+          <label for="apiBaseInput">API Base URL</label>
+          <input type="text" id="apiBaseInput" placeholder="https://api.your-provider.com/v1">
+          <div class="hint" id="apiBaseHint">留空使用默认地址</div>
+        </div>
+        <div class="hidden" id="modelGroup" style="margin-top:14px">
+          <label for="modelInput">模型名称</label>
+          <input type="text" id="modelInput" placeholder="deepseek-chat">
+          <div class="hint" id="modelHint">留空使用默认模型</div>
+        </div>
+      </div>
+
+      <!-- Step 3: 生成配置 -->
+      <div class="step">
+        <div class="step-title"><span class="num">3</span> 生成并保存配置</div>
+        <button class="btn btn-primary" id="generateBtn" onclick="generateConfig()"> 生成配置文件</button>
+        <div id="statusBox" class="status-box hidden"></div>
+        <div id="configPreview" class="config-preview hidden"></div>
+        <div class="actions hidden" id="actionBtns">
+          <button class="btn btn-secondary" onclick="downloadConfig()"> 下载 config.json</button>
+          <button class="btn btn-primary" onclick="startNanobot()">🚀 启动 Nanobot</button>
+        </div>
+      </div>
+
+      <!-- Step 4: 验证连通 -->
+      <div class="step hidden" id="verifyStep">
+        <div class="step-title"><span class="num">✓</span> 验证服务</div>
+        <button class="btn btn-secondary" id="verifyBtn" onclick="verifyConnection()">🔍 检测 Nanobot 是否运行</button>
+        <div id="verifyStatus" class="status-box hidden"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== 提供商配置映射 =====
+const PROVIDERS = {
+  deepseek: {
+    name: 'DeepSeek',
+    apiKeyHint: '获取地址：<a href="https://platform.deepseek.com" target="_blank">platform.deepseek.com</a>',
+    apiBase: 'https://api.deepseek.com',
+    defaultModel: 'deepseek-chat',
+    needApiBase: false,
+  },
+  dashscope: {
+    name: '通义千问',
+    apiKeyHint: '获取地址：<a href="https://dashscope.console.aliyun.com" target="_blank">dashscope.console.aliyun.com</a>',
+    apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    defaultModel: 'qwen-plus',
+    needApiBase: false,
+  },
+  ollama: {
+    name: 'Ollama',
+    apiKeyHint: 'Ollama 本地运行，无需 API Key（留空即可）',
+    apiBase: 'http://localhost:11434',
+    defaultModel: 'llama3.2',
+    needApiBase: false,
+    needKey: false,
+  },
+  openrouter: {
+    name: 'OpenRouter',
+    apiKeyHint: '获取地址：<a href="https://openrouter.ai" target="_blank">openrouter.ai</a>',
+    apiBase: 'https://openrouter.ai/api/v1',
+    defaultModel: 'anthropic/claude-sonnet-4',
+    needApiBase: false,
+  },
+  siliconflow: {
+    name: '硅基流动',
+    apiKeyHint: '获取地址：<a href="https://siliconflow.cn" target="_blank">siliconflow.cn</a>',
+    apiBase: 'https://api.siliconflow.cn/v1',
+    defaultModel: 'deepseek-ai/DeepSeek-V3',
+    needApiBase: false,
+  },
+  custom: {
+    name: '自定义',
+    apiKeyHint: '填入你的 API Key（无认证可留空）',
+    apiBase: '',
+    defaultModel: '',
+    needApiBase: true,
+  },
+};
+
+let selectedProvider = 'deepseek';
+let generatedConfig = null;
+
+function selectProvider(el) {
+  document.querySelectorAll('.provider-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedProvider = el.dataset.provider;
+  const cfg = PROVIDERS[selectedProvider];
+  document.getElementById('apiKeyHint').innerHTML = cfg.apiKeyHint;
+  document.getElementById('apiKeyInput').value = cfg.needKey === false ? '' : '';
+  document.getElementById('apiBaseInput').value = cfg.apiBase;
+  document.getElementById('modelInput').value = cfg.defaultModel;
+  document.getElementById('apiBaseGroup').classList.toggle('hidden', !cfg.needApiBase);
+  document.getElementById('modelGroup').classList.toggle('hidden', selectedProvider !== 'custom');
+  document.getElementById('statusBox').classList.add('hidden');
+  document.getElementById('configPreview').classList.add('hidden');
+  document.getElementById('actionBtns').classList.add('hidden');
+}
+
+function generateConfig() {
+  const apiKey = document.getElementById('apiKeyInput').value.trim();
+  const apiBase = document.getElementById('apiBaseInput').value.trim();
+  const model = document.getElementById('modelInput').value.trim();
+  const cfg = PROVIDERS[selectedProvider];
+  const useApiBase = apiBase || cfg.apiBase;
+  const useModel = model || cfg.defaultModel;
+
+  // 构建 Nanobot config.json
+  const providerConfig = {};
+  if (selectedProvider === 'ollama') {
+    providerConfig.apiBase = useApiBase;
+  } else if (selectedProvider === 'custom') {
+    providerConfig.apiKey = apiKey || null;
+    providerConfig.apiBase = useApiBase;
+  } else {
+    providerConfig.apiKey = apiKey;
+  }
+
+  generatedConfig = {
+    providers: {},
+    agents: {
+      defaults: {
+        provider: selectedProvider === 'custom' ? 'custom' : selectedProvider,
+        model: useModel,
+      }
+    }
+  };
+
+  if (selectedProvider === 'custom') {
+    generatedConfig.providers.custom = providerConfig;
+  } else if (selectedProvider === 'ollama') {
+    generatedConfig.providers.ollama = providerConfig;
+  } else {
+    generatedConfig.providers[selectedProvider] = providerConfig;
+  }
+
+  // 添加常用配置
+  generatedConfig.agents.defaults.timezone = 'Asia/Shanghai';
+
+  // 显示配置
+  const jsonStr = JSON.stringify(generatedConfig, null, 2);
+  const highlighted = jsonStr
+    .replace(/"([^"]+)":/g, '<span class="key">"$1"</span>:')
+    .replace(/: "([^"]+)"/g, ': <span class="str">"$1"</span>')
+    .replace(/: (\d+)/g, ': <span class="num">$1</span>')
+    .replace(/: (null)/g, ': <span class="num">$1</span>');
+
+  document.getElementById('configPreview').innerHTML = highlighted;
+  document.getElementById('configPreview').classList.remove('hidden');
+  document.getElementById('actionBtns').classList.remove('hidden');
+
+  const statusBox = document.getElementById('statusBox');
+  statusBox.className = 'status-box status-warn';
+  statusBox.innerHTML = `️ 配置已生成，请点击「下载 config.json」保存到正确位置，然后点击「启动 Nanobot」`;
+  statusBox.classList.remove('hidden');
+}
+
+function downloadConfig() {
+  if (!generatedConfig) return;
+  const jsonStr = JSON.stringify(generatedConfig, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'config.json';
+  a.click();
+  URL.revokeObjectURL(url);
+
+  const statusBox = document.getElementById('statusBox');
+  statusBox.className = 'status-box status-ok';
+  statusBox.innerHTML = `✅ config.json 已下载！<br>
+    <span class="mono">请将其保存到：<br>
+    Windows: <b>${getHomePath()}\\.nanobot\\config.json</b><br>
+    然后运行: <b>nanobot serve</b></span>`;
+  document.getElementById('verifyStep').classList.remove('hidden');
+}
+
+function getHomePath() {
+  return '%USERPROFILE%';
+}
+
+function startNanobot() {
+  const statusBox = document.getElementById('statusBox');
+  statusBox.className = 'status-box status-warn';
+  statusBox.innerHTML = `📋 请按以下步骤启动 Nanobot：<br><br>
+    <span class="mono">
+    1. 打开终端（Win+R → cmd）<br>
+    2. 运行：<b>nanobot serve</b><br>
+    3. 等待看到：<b>API server listening on http://127.0.0.1:8900</b><br>
+    </span><br>
+    启动后点击下方「检测 Nanobot 是否运行」`;
+  document.getElementById('verifyStep').classList.remove('hidden');
+}
+
+async function verifyConnection() {
+  const statusEl = document.getElementById('verifyStatus');
+  statusEl.className = 'status-box status-warn';
+  statusEl.innerHTML = '⏳ 正在检测...';
+  statusEl.classList.remove('hidden');
+
+  try {
+    const resp = await fetch('http://127.0.0.1:8900/health', { method: 'GET' });
+    if (resp.ok) {
+      const data = await resp.json();
+      statusEl.className = 'status-box status-ok';
+      statusEl.innerHTML = `✅ Nanobot 运行正常！<br><span class="mono">版本: ${data.version || '未知'}</span><br><br>
+        <a href="index.html" style="color:#059669;font-weight:600">→ 返回指挥台</a>`;
+    } else {
+      throw new Error('HTTP ' + resp.status);
+    }
+  } catch (e) {
+    statusEl.className = 'status-box status-err';
+    statusEl.innerHTML = `❌ 连接失败：${e.message}<br><br>
+      请确认：<br>
+       已运行 <b>nanobot serve</b><br>
+      ② 配置文件位置正确<br>
+      ③ 防火墙未拦截 8900 端口`;
+  }
+}
+
+// 初始化
+selectProvider(document.querySelector('.provider-card[data-provider="deepseek"]'));
+</script>
+</body>
+</html>
