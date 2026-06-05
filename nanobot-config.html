@@ -154,7 +154,7 @@ const PROVIDERS = {
   ollama: {
     name: 'Ollama',
     apiKeyHint: 'Ollama 本地运行，无需 API Key（留空即可）',
-    apiBase: 'http://localhost:11434',
+    apiBase: 'http://127.0.0.1:11434',
     defaultModel: 'llama3.2',
     needApiBase: false,
     needKey: false,
@@ -290,7 +290,7 @@ function startNanobot() {
     <span class="mono">
     1. 打开终端（Win+R → cmd）<br>
     2. 运行：<b>nanobot serve</b><br>
-    3. 等待看到：<b>API server listening on http://127.0.0.1:8900</b><br>
+    3. 等待看到：<b>API server listening on 127.0.0.1:8900</b><br>
     </span><br>
     启动后点击下方「检测 Nanobot 是否运行」`;
   document.getElementById('verifyStep').classList.remove('hidden');
@@ -303,7 +303,7 @@ async function verifyConnection() {
   statusEl.classList.remove('hidden');
 
   try {
-    const resp = await fetch('http://127.0.0.1:8900/health', { method: 'GET' });
+    const resp = await fetch('/api/health', { method: 'GET' });
     if (resp.ok) {
       const data = await resp.json();
       statusEl.className = 'status-box status-ok';
