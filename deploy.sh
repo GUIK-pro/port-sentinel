@@ -122,6 +122,31 @@ systemctl enable nanobot.service
 systemctl start nanobot.service
 echo "  ✓ Nanobot 服务已启动（开机自启）"
 
+# 创建配置管理服务
+PYTHON_BIN=$(which python3 2>/dev/null || which python 2>/dev/null || echo "/usr/bin/python3")
+cat > /etc/systemd/system/nanobot-config.service << EOF
+[Unit]
+Description=Nanobot Config Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/wwwroot/port-sentinel
+ExecStart=$PYTHON_BIN config-server.py --port 8901
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable nanobot-config.service
+systemctl start nanobot-config.service
+echo "  ✓ 配置管理服务已启动（端口 8901）"
+
 # 等待 Nanobot 就绪
 echo "  等待 Nanobot 就绪..."
 for i in $(seq 1 20); do

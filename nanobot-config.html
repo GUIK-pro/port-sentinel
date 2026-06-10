@@ -118,8 +118,8 @@
         <div id="statusBox" class="status-box hidden"></div>
         <div id="configPreview" class="config-preview hidden"></div>
         <div class="actions hidden" id="actionBtns">
+          <button class="btn btn-primary" id="saveBtn" onclick="saveToServer()" style="background:linear-gradient(135deg,#0a1f44,#142c5c);">💾 一键保存并生效</button>
           <button class="btn btn-secondary" onclick="downloadConfig()"> 下载 config.json</button>
-          <button class="btn btn-primary" onclick="startNanobot()">🚀 启动 Nanobot</button>
         </div>
       </div>
 
@@ -271,29 +271,85 @@ function downloadConfig() {
   URL.revokeObjectURL(url);
 
   const statusBox = document.getElementById('statusBox');
-  statusBox.className = 'status-box status-ok';
-  statusBox.innerHTML = `✅ config.json 已下载！<br>
-    <span class="mono">请将其保存到：<br>
-    Windows: <b>${getHomePath()}\\.nanobot\\config.json</b><br>
-    然后运行: <b>nanobot serve</b></span>`;
-  document.getElementById('verifyStep').classList.remove('hidden');
+  statusBox.className = 'status-box status-warn';
+  statusBox.innerHTML = `✅ config.json 已下载到本地！<br>
+    <span class="mono">如需手动部署，请保存到服务器：<br>
+    Linux: <b>/root/.nanobot/config.json</b><br>
+    Windows: <b>${getHomePath()}\\.nanobot\\config.json</b></span>`;
 }
 
 function getHomePath() {
   return '%USERPROFILE%';
 }
 
-function startNanobot() {
+async function saveToServer() {
+  if (!generatedConfig) return;
+  const saveBtn = document.getElementById('saveBtn');
   const statusBox = document.getElementById('statusBox');
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = '⏳ 正在保存...';
   statusBox.className = 'status-box status-warn';
-  statusBox.innerHTML = `📋 请按以下步骤启动 Nanobot：<br><br>
-    <span class="mono">
-    1. 打开终端（Win+R → cmd）<br>
-    2. 运行：<b>nanobot serve</b><br>
-    3. 等待看到：<b>API server listening on 127.0.0.1:8900</b><br>
-    </span><br>
-    启动后点击下方「检测 Nanobot 是否运行」`;
-  document.getElementById('verifyStep').classList.remove('hidden');
+  statusBox.innerHTML = '⏳ 正在将配置写入服务器...';
+  statusBox.classList.remove('hidden');
+
+  try {
+    // Step 1: 写入配置
+    const resp = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(generatedConfig),
+    });
+    const result = await resp.json();
+
+    if (!result.ok) {
+      throw new Error(result.error || '写入失败');
+    }
+
+    statusBox.innerHTML = `✅ 配置已写入服务器！<br><span class="mono">${result.path}</span><br><br>⏳ 正在重启 Nanobot 服务...`;
+
+    // Step 2: 重启 Nanobot
+    try {
+      const restartResp = await fetch('/api/restart', { method: 'POST' });
+      const restartResult = await restartResp.json();
+
+      if (restartResult.ok) {
+        statusBox.className = 'status-box status-ok';
+        const restartMsg = restartResult.platform === 'windows'
+          ? 'Windows 环境请手动重启 Nanobot（关闭旧窗口后运行 nanobot serve）'
+          : 'Nanobot 服务已自动重启';
+        statusBox.innerHTML = `✅ <b>配置已生效！</b><br><br>
+          <span class="mono">
+          · 配置路径: ${result.path}<br>
+          · ${restartMsg}<br>
+          · 等待 3~5 秒后点击下方「检测 Nanobot 是否运行」
+          </span>`;
+      } else {
+        statusBox.className = 'status-box status-warn';
+        statusBox.innerHTML = `⚠️ 配置已写入，但重启 Nanobot 失败：${restartResult.error}<br>
+          <span class="mono">请手动执行：<b>systemctl restart nanobot</b></span>`;
+      }
+    } catch (e) {
+      statusBox.className = 'status-box status-warn';
+      statusBox.innerHTML = `⚠️ 配置已写入，但重启请求失败：${e.message}<br>
+        <span class="mono">请手动执行：<b>systemctl restart nanobot</b></span>`;
+    }
+
+    document.getElementById('verifyStep').classList.remove('hidden');
+
+  } catch (e) {
+    statusBox.className = 'status-box status-err';
+    statusBox.innerHTML = `❌ 保存失败：${e.message}<br><br>
+      <span class="mono">
+      可能原因：<br>
+      · 配置管理服务 (config-server) 未启动<br>
+      · Nginx 反向代理未配置 /api/config<br>
+      · 请检查 deploy.sh 是否已正确执行
+      </span>`;
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '💾 一键保存并生效';
+  }
 }
 
 async function verifyConnection() {
@@ -303,11 +359,14 @@ async function verifyConnection() {
   statusEl.classList.remove('hidden');
 
   try {
-    const resp = await fetch('/api/health', { method: 'GET' });
+    let resp = await fetch('/api/health', { method: 'GET' });
+    if (!resp.ok) {
+      resp = await fetch('/health', { method: 'GET' });
+    }
     if (resp.ok) {
       const data = await resp.json();
       statusEl.className = 'status-box status-ok';
-      statusEl.innerHTML = `✅ Nanobot 运行正常！<br><span class="mono">版本: ${data.version || '未知'}</span><br><br>
+      statusEl.innerHTML = `✅ Nanobot 运行正常！<br><span class="mono">状态: ${data.status || '正常'}</span><br><br>
         <a href="index.html" style="color:#059669;font-weight:600">→ 返回指挥台</a>`;
     } else {
       throw new Error('HTTP ' + resp.status);
@@ -316,14 +375,37 @@ async function verifyConnection() {
     statusEl.className = 'status-box status-err';
     statusEl.innerHTML = `❌ 连接失败：${e.message}<br><br>
       请确认：<br>
-       已运行 <b>nanobot serve</b><br>
-      ② 配置文件位置正确<br>
-      ③ 防火墙未拦截 8900 端口`;
+      ① Nanobot 服务已启动（<b>systemctl status nanobot</b>）<br>
+      ② Nginx 反向代理配置正确（<b>nginx -t</b>）<br>
+      ③ 已通过本页配置 LLM API Key`;
+  }
+}
+
+// 页面加载时获取当前配置
+async function loadCurrentConfig() {
+  try {
+    const resp = await fetch('/api/config', { method: 'GET' });
+    if (resp.ok) {
+      const result = await resp.json();
+      if (result.ok && result.config) {
+        const cfg = result.config;
+        const provider = cfg.agents?.defaults?.provider || '未配置';
+        const model = cfg.agents?.defaults?.model || '未配置';
+        const statusBox = document.getElementById('statusBox');
+        statusBox.className = 'status-box status-ok';
+        statusBox.innerHTML = `📋 当前配置：<b>${provider}</b> / 模型：<b>${model}</b><br>
+          <span class="mono">路径: ${result.path}</span>`;
+        statusBox.classList.remove('hidden');
+      }
+    }
+  } catch (e) {
+    // 静默失败（可能是本地开发环境）
   }
 }
 
 // 初始化
 selectProvider(document.querySelector('.provider-card[data-provider="deepseek"]'));
+loadCurrentConfig();
 </script>
 </body>
 </html>
